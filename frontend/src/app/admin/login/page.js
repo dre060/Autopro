@@ -33,17 +33,36 @@ export default function AdminLogin() {
     setIsLoading(true);
     setError("");
 
-    // For development - simple hardcoded check
-    // In production, this should call an API endpoint
-    if (credentials.email === "admin@autopro.com" && credentials.password === "autopro2025") {
-      // Store admin session
-      localStorage.setItem("adminAuthenticated", "true");
-      localStorage.setItem("adminAuthTime", Date.now().toString());
-      
-      // Redirect to admin vehicles page
-      router.push("/admin/vehicles");
-    } else {
-      setError("Invalid email or password");
+    try {
+      // Make API call to authenticate
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(credentials),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Store authentication token
+        localStorage.setItem("adminAuthenticated", "true");
+        localStorage.setItem("adminAuthTime", Date.now().toString());
+        if (data.token) {
+          localStorage.setItem("adminToken", data.token);
+        }
+        
+        // Redirect to admin vehicles page
+        router.push("/admin/vehicles");
+      } else {
+        const errorData = await response.json();
+        setError(errorData.message || "Invalid email or password");
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      setError("Unable to connect to server. Please try again later.");
+    } finally {
       setIsLoading(false);
     }
   };
@@ -98,7 +117,7 @@ export default function AdminLogin() {
                 onChange={handleChange}
                 required
                 className="w-full px-4 py-3 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none transition-colors"
-                placeholder="admin@autopro.com"
+                placeholder="Enter your email"
                 autoComplete="email"
               />
             </div>
@@ -136,20 +155,11 @@ export default function AdminLogin() {
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-400">
               Forgot your password?{" "}
-              <a href="/admin/reset-password" className="text-blue-400 hover:text-blue-300">
-                Reset it here
+              <a href="mailto:service@autoprorepairs.com" className="text-blue-400 hover:text-blue-300">
+                Contact Support
               </a>
             </p>
           </div>
-        </div>
-
-        {/* Development Notice */}
-        <div className="mt-6 p-4 bg-yellow-900 rounded-lg">
-          <p className="text-sm text-yellow-200 text-center">
-            <strong>Development Mode:</strong><br />
-            Email: admin@autopro.com<br />
-            Password: autopro2025
-          </p>
         </div>
 
         {/* Back to Website */}

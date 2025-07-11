@@ -16,6 +16,7 @@ export default function Contact() {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [error, setError] = useState("");
   const [activeInfo, setActiveInfo] = useState("hours");
   const [isVisible, setIsVisible] = useState({});
   const observerRef = useRef(null);
@@ -47,36 +48,82 @@ export default function Contact() {
       ...formData,
       [e.target.name]: e.target.value,
     });
+    if (error) setError("");
+  };
+
+  const validateForm = () => {
+    if (!formData.name.trim()) {
+      setError("Please enter your name");
+      return false;
+    }
+    if (!formData.email.trim()) {
+      setError("Please enter your email");
+      return false;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      setError("Please enter a valid email address");
+      return false;
+    }
+    if (!formData.subject.trim()) {
+      setError("Please enter a subject");
+      return false;
+    }
+    if (!formData.message.trim()) {
+      setError("Please enter a message");
+      return false;
+    }
+    return true;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
     
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setShowSuccess(true);
-      setFormData({
-        name: "",
-        email: "",
-        phone: "",
-        subject: "",
-        message: "",
+    if (!validateForm()) {
+      return;
+    }
+    
+    setIsSubmitting(true);
+    setError("");
+    
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
       });
-      
-      // Hide success message after 5 seconds
-      setTimeout(() => setShowSuccess(false), 5000);
-    }, 2000);
+
+      if (response.ok) {
+        setShowSuccess(true);
+        setFormData({
+          name: "",
+          email: "",
+          phone: "",
+          subject: "",
+          message: "",
+        });
+        
+        // Hide success message after 5 seconds
+        setTimeout(() => setShowSuccess(false), 5000);
+      } else {
+        setError("Failed to send message. Please try again or call us directly.");
+      }
+    } catch (error) {
+      console.error("Contact form error:", error);
+      setError("Unable to send message. Please try again or call us directly.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const contactMethods = [
     {
       icon: "📍",
       title: "Visit Us",
-      info: "123 Main Street, Leesburg, FL 34748",
+      info: "806 Hood Ave, Leesburg, FL 34748",
       action: "Get Directions",
-      link: "https://maps.google.com",
+      link: "https://maps.google.com/?q=806+Hood+Ave+Leesburg+FL+34748",
       color: "from-blue-600 to-cyan-600"
     },
     {
@@ -90,9 +137,9 @@ export default function Contact() {
     {
       icon: "📧",
       title: "Email Us",
-      info: "info@autopro.com",
+      info: "service@autoprorepairs.com",
       action: "Send Email",
-      link: "mailto:info@autopro.com",
+      link: "mailto:service@autoprorepairs.com",
       color: "from-purple-600 to-pink-600"
     },
   ];
@@ -141,7 +188,7 @@ export default function Contact() {
           priority
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent flex items-center justify-center">
-          <h1 className="text-4xl md:text-6xl font-bold text-center">Contact Us</h1>
+          <h1 className="text-4xl md:text-6xl font-bold text-center animate-fadeInDown">Contact Us</h1>
         </div>
       </section>
 
@@ -192,6 +239,12 @@ export default function Contact() {
             {showSuccess && (
               <div className="bg-green-600 text-white p-4 rounded mb-6 text-center animate-fadeIn">
                 Message sent successfully! We'll get back to you soon.
+              </div>
+            )}
+            
+            {error && (
+              <div className="bg-red-600 text-white p-4 rounded mb-6 text-center">
+                {error}
               </div>
             )}
 
@@ -335,6 +388,7 @@ export default function Contact() {
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
                 className="rounded-lg"
+                title="AUTO PRO Location Map"
               />
             </div>
           </div>

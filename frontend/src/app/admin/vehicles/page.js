@@ -14,6 +14,8 @@ export default function AdminVehicles() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imageFiles, setImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   
   // Style fix for input visibility
   const inputStyle = {
@@ -105,13 +107,17 @@ export default function AdminVehicles() {
 
   const fetchVehicles = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/vehicles');
+      const response = await fetch('/api/vehicles');
       if (response.ok) {
         const data = await response.json();
         setVehicles(data.vehicles || []);
+      } else {
+        setError("Failed to fetch vehicles");
+        setVehicles([]);
       }
     } catch (error) {
       console.error('Error fetching vehicles:', error);
+      setError("Error loading vehicles");
       setVehicles([]);
     }
   };
@@ -123,6 +129,9 @@ export default function AdminVehicles() {
       ...prevData,
       [name]: type === 'checkbox' ? checked : value
     }));
+    
+    // Clear any errors when user starts typing
+    if (error) setError("");
   };
 
   const handleImageChange = (e) => {
@@ -137,9 +146,34 @@ export default function AdminVehicles() {
     setImagePreviews(previews);
   };
 
+  const validateForm = () => {
+    const requiredFields = ['year', 'make', 'model', 'price', 'mileage', 'bodyType', 'exteriorColor', 'fuelType', 'transmission'];
+    
+    for (const field of requiredFields) {
+      if (!formData[field]) {
+        setError(`Please fill in the ${field.charAt(0).toUpperCase() + field.slice(1)} field`);
+        return false;
+      }
+    }
+    
+    if (!editingVehicle && imageFiles.length === 0) {
+      setError("Please upload at least one vehicle image");
+      return false;
+    }
+    
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+    
     setIsSubmitting(true);
+    setError("");
+    setSuccess("");
 
     try {
       const formDataToSend = new FormData();
@@ -157,8 +191,8 @@ export default function AdminVehicles() {
       });
 
       const url = editingVehicle 
-        ? `http://localhost:5000/api/vehicles/${editingVehicle._id}`
-        : 'http://localhost:5000/api/vehicles';
+        ? `/api/vehicles/${editingVehicle._id}`
+        : '/api/vehicles';
       
       const method = editingVehicle ? 'PUT' : 'POST';
 
@@ -168,16 +202,19 @@ export default function AdminVehicles() {
       });
 
       if (response.ok) {
-        alert(editingVehicle ? 'Vehicle updated successfully!' : 'Vehicle added successfully!');
+        setSuccess(editingVehicle ? 'Vehicle updated successfully!' : 'Vehicle added successfully!');
         resetForm();
         fetchVehicles();
+        
+        // Hide success message after 3 seconds
+        setTimeout(() => setSuccess(""), 3000);
       } else {
-        const error = await response.json();
-        alert(`Error: ${error.message || 'Failed to save vehicle'}`);
+        const errorData = await response.json();
+        setError(errorData.message || 'Failed to save vehicle. Please try again.');
       }
     } catch (error) {
       console.error('Error saving vehicle:', error);
-      alert('Error saving vehicle. Please try again.');
+      setError('Error saving vehicle. Please check your connection and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -190,6 +227,7 @@ export default function AdminVehicles() {
     setImagePreviews([]);
     setEditingVehicle(null);
     setShowForm(false);
+    setError("");
   };
 
   const handleEdit = (vehicle) => {
@@ -216,25 +254,26 @@ export default function AdminVehicles() {
     if (!confirm('Are you sure you want to delete this vehicle?')) return;
 
     try {
-      const response = await fetch(`http://localhost:5000/api/vehicles/${id}`, {
+      const response = await fetch(`/api/vehicles/${id}`, {
         method: 'DELETE'
       });
 
       if (response.ok) {
-        alert('Vehicle deleted successfully!');
+        setSuccess('Vehicle deleted successfully!');
         fetchVehicles();
+        setTimeout(() => setSuccess(""), 3000);
       } else {
-        alert('Error deleting vehicle');
+        setError('Error deleting vehicle');
       }
     } catch (error) {
       console.error('Error deleting vehicle:', error);
-      alert('Error deleting vehicle');
+      setError('Error deleting vehicle. Please try again.');
     }
   };
 
   const toggleFeatured = async (id) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/vehicles/${id}/featured`, {
+      const response = await fetch(`/api/vehicles/${id}/featured`, {
         method: 'PATCH'
       });
 
@@ -290,6 +329,23 @@ export default function AdminVehicles() {
           </div>
         </div>
       </header>
+
+      {/* Success/Error Messages */}
+      {success && (
+        <div className="max-w-7xl mx-auto px-4 mt-4">
+          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+            {success}
+          </div>
+        </div>
+      )}
+      
+      {error && (
+        <div className="max-w-7xl mx-auto px-4 mt-4">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+            {error}
+          </div>
+        </div>
+      )}
 
       {/* Add/Edit Form */}
       {showForm && (
@@ -655,7 +711,7 @@ export default function AdminVehicles() {
               {/* Images */}
               <div>
                 <label htmlFor="images" className="block text-sm font-medium text-gray-700 mb-1">
-                  Vehicle Images
+                  Vehicle Images {!editingVehicle && '*'}
                 </label>
                 <input
                   id="images"
