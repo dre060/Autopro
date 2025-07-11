@@ -3,6 +3,15 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import AdminLayout from "../AdminLayout";
+import { 
+  getAppointments, 
+  createAppointment, 
+  updateAppointment, 
+  deleteAppointment,
+  getProfile,
+  supabase 
+} from "@/lib/supabase";
 
 export default function AdminAppointments() {
   const [appointments, setAppointments] = useState([]);
@@ -17,100 +26,41 @@ export default function AdminAppointments() {
   const [editingAppointment, setEditingAppointment] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [detailsAppointment, setDetailsAppointment] = useState(null);
+  const [technicians, setTechnicians] = useState([]);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     fetchAppointments();
+    fetchTechnicians();
   }, []);
 
   const fetchAppointments = async () => {
     setLoading(true);
     try {
-      // Simulate API call
-      setTimeout(() => {
-        const mockAppointments = [
-          {
-            id: 1,
-            customer: "John Doe",
-            email: "john@example.com",
-            phone: "(352) 555-0123",
-            date: "2025-01-08",
-            time: "10:00 AM",
-            endTime: "11:00 AM",
-            service: "Oil Change",
-            services: ["Oil Change", "Filter Replacement"],
-            vehicle: "2018 Honda Accord",
-            vehicleVin: "1HGCV1F31JA123456",
-            vehicleMileage: 45000,
-            status: "pending",
-            technician: "Mike Johnson",
-            bay: "Bay 1",
-            estimatedCost: 49.99,
-            actualCost: null,
-            notes: "Customer requested synthetic oil",
-            internalNotes: "Regular customer, give 10% discount",
-            urgency: "medium",
-            reminderSent: false,
-            confirmationSent: false,
-            createdAt: "2025-01-05",
-          },
-          {
-            id: 2,
-            customer: "Jane Smith",
-            email: "jane@example.com",
-            phone: "(352) 555-0124",
-            date: "2025-01-08",
-            time: "2:00 PM",
-            endTime: "4:00 PM",
-            service: "Brake Service",
-            services: ["Brake Pad Replacement", "Rotor Resurfacing"],
-            vehicle: "2020 Toyota Camry",
-            vehicleVin: "4T1B11HK5LU123456",
-            vehicleMileage: 32000,
-            status: "confirmed",
-            technician: "Tom Wilson",
-            bay: "Bay 2",
-            estimatedCost: 199.99,
-            actualCost: null,
-            notes: "Front brakes only",
-            internalNotes: "Check rear brakes as well",
-            urgency: "high",
-            reminderSent: true,
-            confirmationSent: true,
-            createdAt: "2025-01-03",
-          },
-          {
-            id: 3,
-            customer: "Bob Johnson",
-            email: "bob@example.com",
-            phone: "(352) 555-0125",
-            date: "2025-01-09",
-            time: "9:00 AM",
-            endTime: "10:30 AM",
-            service: "Engine Diagnostic",
-            services: ["Diagnostic Scan", "System Check"],
-            vehicle: "2019 Ford F-150",
-            vehicleVin: "1FTEW1EP5KF123456",
-            vehicleMileage: 38000,
-            status: "in-progress",
-            technician: "Mike Johnson",
-            bay: "Bay 3",
-            estimatedCost: 89.99,
-            actualCost: 89.99,
-            notes: "Check engine light on",
-            internalNotes: "Possible O2 sensor issue",
-            urgency: "medium",
-            reminderSent: true,
-            confirmationSent: true,
-            createdAt: "2025-01-04",
-          },
-        ];
-        setAppointments(mockAppointments);
-        setFilteredAppointments(mockAppointments);
-        setLoading(false);
-      }, 1000);
+      const { data, error } = await getAppointments();
+      if (error) throw error;
+      setAppointments(data || []);
+      setFilteredAppointments(data || []);
     } catch (error) {
       console.error("Error fetching appointments:", error);
+      setError("Failed to load appointments");
+    } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTechnicians = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name')
+        .in('role', ['admin', 'technician']);
+      
+      if (error) throw error;
+      setTechnicians(data || []);
+    } catch (error) {
+      console.error("Error fetching technicians:", error);
     }
   };
 
@@ -126,11 +76,12 @@ export default function AdminAppointments() {
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
       filtered = filtered.filter(apt => 
-        apt.customer.toLowerCase().includes(search) ||
+        apt.name.toLowerCase().includes(search) ||
         apt.email.toLowerCase().includes(search) ||
         apt.phone.includes(search) ||
-        apt.vehicle.toLowerCase().includes(search) ||
-        apt.service.toLowerCase().includes(search)
+        apt.service.toLowerCase().includes(search) ||
+        (apt.vehicle_info?.make?.toLowerCase().includes(search)) ||
+        (apt.vehicle_info?.model?.toLowerCase().includes(search))
       );
     }
 
@@ -138,6 +89,13 @@ export default function AdminAppointments() {
     if (dateFilter) {
       filtered = filtered.filter(apt => apt.date === dateFilter);
     }
+
+    // Sort by date and time
+    filtered.sort((a, b) => {
+      const dateCompare = new Date(a.date) - new Date(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      return a.time.localeCompare(b.time);
+    });
 
     setFilteredAppointments(filtered);
   }, [appointments, filter, searchTerm, dateFilter]);
@@ -166,19 +124,31 @@ export default function AdminAppointments() {
 
   const handleStatusChange = async (appointmentId, newStatus) => {
     try {
-      // API call to update status
-      console.log("Updating appointment status:", appointmentId, newStatus);
-      
+      const { error } = await updateAppointment(appointmentId, { status: newStatus });
+      if (error) throw error;
+
       setAppointments(appointments.map(apt => 
         apt.id === appointmentId ? { ...apt, status: newStatus } : apt
       ));
-      
-      // Send notifications if needed
+
+      // Send notification if status changed to confirmed
       if (newStatus === 'confirmed') {
-        console.log("Sending confirmation email...");
+        await sendConfirmationEmail(appointmentId);
       }
+
+      setSuccess("Status updated successfully");
+      setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
       console.error("Error updating status:", error);
+      setError("Failed to update status");
+    }
+  };
+
+  const sendConfirmationEmail = async (appointmentId) => {
+    // In a real app, this would trigger an email through your backend
+    const appointment = appointments.find(apt => apt.id === appointmentId);
+    if (appointment) {
+      await updateAppointment(appointmentId, { confirmation_sent: true });
     }
   };
 
@@ -189,14 +159,17 @@ export default function AdminAppointments() {
 
   const confirmDelete = async () => {
     try {
-      // API call to delete appointment
-      console.log("Deleting appointment:", appointmentToDelete.id);
-      
+      const { error } = await deleteAppointment(appointmentToDelete.id);
+      if (error) throw error;
+
       setAppointments(appointments.filter(apt => apt.id !== appointmentToDelete.id));
       setShowDeleteModal(false);
       setAppointmentToDelete(null);
+      setSuccess("Appointment deleted successfully");
+      setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
       console.error("Error deleting appointment:", error);
+      setError("Failed to delete appointment");
     }
   };
 
@@ -207,16 +180,19 @@ export default function AdminAppointments() {
 
   const handleEditSave = async () => {
     try {
-      // API call to update appointment
-      console.log("Updating appointment:", editingAppointment);
-      
+      const { error } = await updateAppointment(editingAppointment.id, editingAppointment);
+      if (error) throw error;
+
       setAppointments(appointments.map(apt => 
         apt.id === editingAppointment.id ? editingAppointment : apt
       ));
       setShowEditModal(false);
       setEditingAppointment(null);
+      setSuccess("Appointment updated successfully");
+      setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
       console.error("Error updating appointment:", error);
+      setError("Failed to update appointment");
     }
   };
 
@@ -227,15 +203,17 @@ export default function AdminAppointments() {
 
   const sendReminder = async (appointment) => {
     try {
-      // API call to send reminder
-      console.log("Sending reminder for appointment:", appointment.id);
-      alert(`Reminder sent to ${appointment.customer} at ${appointment.email}`);
+      await updateAppointment(appointment.id, { reminder_sent: true });
       
       setAppointments(appointments.map(apt => 
-        apt.id === appointment.id ? { ...apt, reminderSent: true } : apt
+        apt.id === appointment.id ? { ...apt, reminder_sent: true } : apt
       ));
+      
+      setSuccess(`Reminder sent to ${appointment.name} at ${appointment.email}`);
+      setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
       console.error("Error sending reminder:", error);
+      setError("Failed to send reminder");
     }
   };
 
@@ -245,13 +223,13 @@ export default function AdminAppointments() {
     const rows = filteredAppointments.map(apt => [
       apt.date,
       apt.time,
-      apt.customer,
+      apt.name,
       apt.email,
       apt.phone,
       apt.service,
-      apt.vehicle,
+      apt.vehicle_info ? `${apt.vehicle_info.year || ''} ${apt.vehicle_info.make || ''} ${apt.vehicle_info.model || ''}`.trim() : '',
       apt.status,
-      apt.technician,
+      apt.assigned_technician || '',
     ]);
     
     const csv = [headers, ...rows].map(row => row.join(",")).join("\n");
@@ -264,12 +242,19 @@ export default function AdminAppointments() {
   };
 
   // Calculate stats
-  const todayAppointments = appointments.filter(apt => apt.date === new Date().toISOString().split('T')[0]);
+  const today = new Date().toISOString().split('T')[0];
+  const todayAppointments = appointments.filter(apt => apt.date === today);
   const pendingCount = appointments.filter(apt => apt.status === 'pending').length;
   const confirmedCount = appointments.filter(apt => apt.status === 'confirmed').length;
 
+  // Calculate today's revenue
+  const todayRevenue = todayAppointments.reduce((sum, apt) => {
+    const cost = apt.actual_cost?.total || apt.estimated_cost?.total || 0;
+    return sum + cost;
+  }, 0);
+
   return (
-    <div>
+    <AdminLayout>
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Appointments</h1>
@@ -295,6 +280,19 @@ export default function AdminAppointments() {
         </div>
       </div>
 
+      {/* Success/Error Messages */}
+      {success && (
+        <div className="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+          {success}
+        </div>
+      )}
+      
+      {error && (
+        <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow p-4">
@@ -312,10 +310,7 @@ export default function AdminAppointments() {
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm text-gray-600">Total Revenue Today</p>
           <p className="text-2xl font-bold text-green-600">
-            ${filteredAppointments
-              .filter(apt => apt.date === new Date().toISOString().split('T')[0])
-              .reduce((sum, apt) => sum + (apt.actualCost || apt.estimatedCost || 0), 0)
-              .toFixed(2)}
+            ${todayRevenue.toFixed(2)}
           </p>
         </div>
       </div>
@@ -428,7 +423,7 @@ export default function AdminAppointments() {
                     <div>
                       <div className="text-sm font-medium text-gray-900">{appointment.date}</div>
                       <div className="text-sm text-gray-500">
-                        {appointment.time} - {appointment.endTime}
+                        {appointment.time} {appointment.end_time && `- ${appointment.end_time}`}
                       </div>
                       <div className={`text-xs ${getUrgencyColor(appointment.urgency)}`}>
                         {appointment.urgency.toUpperCase()}
@@ -437,28 +432,40 @@ export default function AdminAppointments() {
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{appointment.customer}</div>
+                      <div className="text-sm font-medium text-gray-900">{appointment.name}</div>
                       <div className="text-xs text-gray-500">{appointment.email}</div>
                       <div className="text-xs text-gray-500">{appointment.phone}</div>
                     </div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-gray-900">{appointment.service}</div>
-                    {appointment.services.length > 1 && (
+                    {appointment.services && appointment.services.length > 1 && (
                       <div className="text-xs text-gray-500">
                         +{appointment.services.length - 1} more services
                       </div>
                     )}
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900">{appointment.vehicle}</div>
-                    <div className="text-xs text-gray-500">
-                      {appointment.vehicleMileage?.toLocaleString()} mi
-                    </div>
+                    {appointment.vehicle_info ? (
+                      <div>
+                        <div className="text-sm text-gray-900">
+                          {appointment.vehicle_info.year} {appointment.vehicle_info.make} {appointment.vehicle_info.model}
+                        </div>
+                        {appointment.vehicle_info.mileage && (
+                          <div className="text-xs text-gray-500">
+                            {appointment.vehicle_info.mileage.toLocaleString()} mi
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-500">No vehicle info</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{appointment.technician}</div>
-                    <div className="text-xs text-gray-500">{appointment.bay}</div>
+                    <div className="text-sm text-gray-900">{appointment.assigned_technician || '-'}</div>
+                    {appointment.bay && (
+                      <div className="text-xs text-gray-500">{appointment.bay}</div>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <select
@@ -474,21 +481,21 @@ export default function AdminAppointments() {
                       <option value="no-show">No Show</option>
                     </select>
                     <div className="flex gap-1 mt-1">
-                      {appointment.confirmationSent && (
+                      {appointment.confirmation_sent && (
                         <span className="text-xs text-green-600" title="Confirmation sent">✓C</span>
                       )}
-                      {appointment.reminderSent && (
+                      {appointment.reminder_sent && (
                         <span className="text-xs text-blue-600" title="Reminder sent">✓R</span>
                       )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">
-                      ${appointment.actualCost || appointment.estimatedCost}
+                      ${appointment.actual_cost?.total || appointment.estimated_cost?.total || 0}
                     </div>
-                    {appointment.actualCost && appointment.estimatedCost !== appointment.actualCost && (
+                    {appointment.actual_cost?.total && appointment.estimated_cost?.total !== appointment.actual_cost?.total && (
                       <div className="text-xs text-gray-500">
-                        Est: ${appointment.estimatedCost}
+                        Est: ${appointment.estimated_cost.total}
                       </div>
                     )}
                   </td>
@@ -513,7 +520,7 @@ export default function AdminAppointments() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                       </button>
-                      {!appointment.reminderSent && appointment.status === 'confirmed' && (
+                      {!appointment.reminder_sent && appointment.status === 'confirmed' && (
                         <button
                           onClick={() => sendReminder(appointment)}
                           className="text-green-600 hover:text-green-900"
@@ -548,7 +555,7 @@ export default function AdminAppointments() {
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
             <h3 className="text-lg font-bold mb-4">Confirm Delete</h3>
             <p className="mb-6">
-              Are you sure you want to delete the appointment for <strong>{appointmentToDelete.customer}</strong> on {appointmentToDelete.date} at {appointmentToDelete.time}?
+              Are you sure you want to delete the appointment for <strong>{appointmentToDelete.name}</strong> on {appointmentToDelete.date} at {appointmentToDelete.time}?
             </p>
             <div className="flex justify-end gap-4">
               <button
@@ -570,7 +577,7 @@ export default function AdminAppointments() {
 
       {/* Edit Modal */}
       {showEditModal && editingAppointment && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold mb-4">Edit Appointment</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -586,7 +593,7 @@ export default function AdminAppointments() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
                 <input
-                  type="text"
+                  type="time"
                   value={editingAppointment.time}
                   onChange={(e) => setEditingAppointment({ ...editingAppointment, time: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -595,22 +602,34 @@ export default function AdminAppointments() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Technician</label>
                 <select
-                  value={editingAppointment.technician}
-                  onChange={(e) => setEditingAppointment({ ...editingAppointment, technician: e.target.value })}
+                  value={editingAppointment.technician_id || ''}
+                  onChange={(e) => {
+                    const techId = e.target.value;
+                    const tech = technicians.find(t => t.id === techId);
+                    setEditingAppointment({ 
+                      ...editingAppointment, 
+                      technician_id: techId,
+                      assigned_technician: tech ? `${tech.first_name} ${tech.last_name}` : ''
+                    });
+                  }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="Mike Johnson">Mike Johnson</option>
-                  <option value="Tom Wilson">Tom Wilson</option>
-                  <option value="Sarah Williams">Sarah Williams</option>
+                  <option value="">Unassigned</option>
+                  {technicians.map(tech => (
+                    <option key={tech.id} value={tech.id}>
+                      {tech.first_name} {tech.last_name}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Bay</label>
                 <select
-                  value={editingAppointment.bay}
+                  value={editingAppointment.bay || ''}
                   onChange={(e) => setEditingAppointment({ ...editingAppointment, bay: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="">No Bay Assigned</option>
                   <option value="Bay 1">Bay 1</option>
                   <option value="Bay 2">Bay 2</option>
                   <option value="Bay 3">Bay 3</option>
@@ -648,8 +667,16 @@ export default function AdminAppointments() {
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Internal Notes</label>
                 <textarea
-                  value={editingAppointment.internalNotes}
-                  onChange={(e) => setEditingAppointment({ ...editingAppointment, internalNotes: e.target.value })}
+                  value={editingAppointment.notes?.[0]?.message || ''}
+                  onChange={(e) => setEditingAppointment({ 
+                    ...editingAppointment, 
+                    notes: [{
+                      author: 'Admin',
+                      message: e.target.value,
+                      created_at: new Date().toISOString(),
+                      isCustomerVisible: false
+                    }]
+                  })}
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
@@ -675,7 +702,7 @@ export default function AdminAppointments() {
 
       {/* Details Modal */}
       {showDetailsModal && detailsAppointment && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-4">
               <h3 className="text-lg font-bold">Appointment Details</h3>
@@ -693,7 +720,7 @@ export default function AdminAppointments() {
               <div>
                 <h4 className="font-semibold text-gray-700 mb-2">Customer Information</h4>
                 <div className="space-y-2 text-sm">
-                  <p><span className="text-gray-500">Name:</span> {detailsAppointment.customer}</p>
+                  <p><span className="text-gray-500">Name:</span> {detailsAppointment.name}</p>
                   <p><span className="text-gray-500">Email:</span> {detailsAppointment.email}</p>
                   <p><span className="text-gray-500">Phone:</span> {detailsAppointment.phone}</p>
                 </div>
@@ -703,7 +730,7 @@ export default function AdminAppointments() {
                 <h4 className="font-semibold text-gray-700 mb-2">Appointment Information</h4>
                 <div className="space-y-2 text-sm">
                   <p><span className="text-gray-500">Date:</span> {detailsAppointment.date}</p>
-                  <p><span className="text-gray-500">Time:</span> {detailsAppointment.time} - {detailsAppointment.endTime}</p>
+                  <p><span className="text-gray-500">Time:</span> {detailsAppointment.time} {detailsAppointment.end_time && `- ${detailsAppointment.end_time}`}</p>
                   <p><span className="text-gray-500">Status:</span> 
                     <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(detailsAppointment.status)}`}>
                       {detailsAppointment.status}
@@ -719,33 +746,46 @@ export default function AdminAppointments() {
               
               <div>
                 <h4 className="font-semibold text-gray-700 mb-2">Vehicle Information</h4>
-                <div className="space-y-2 text-sm">
-                  <p><span className="text-gray-500">Vehicle:</span> {detailsAppointment.vehicle}</p>
-                  <p><span className="text-gray-500">VIN:</span> {detailsAppointment.vehicleVin}</p>
-                  <p><span className="text-gray-500">Mileage:</span> {detailsAppointment.vehicleMileage?.toLocaleString()} miles</p>
-                </div>
+                {detailsAppointment.vehicle_info ? (
+                  <div className="space-y-2 text-sm">
+                    <p><span className="text-gray-500">Vehicle:</span> {detailsAppointment.vehicle_info.year} {detailsAppointment.vehicle_info.make} {detailsAppointment.vehicle_info.model}</p>
+                    {detailsAppointment.vehicle_info.vin && (
+                      <p><span className="text-gray-500">VIN:</span> {detailsAppointment.vehicle_info.vin}</p>
+                    )}
+                    {detailsAppointment.vehicle_info.mileage && (
+                      <p><span className="text-gray-500">Mileage:</span> {detailsAppointment.vehicle_info.mileage.toLocaleString()} miles</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No vehicle information provided</p>
+                )}
               </div>
               
               <div>
                 <h4 className="font-semibold text-gray-700 mb-2">Service Information</h4>
                 <div className="space-y-2 text-sm">
-                  <p><span className="text-gray-500">Technician:</span> {detailsAppointment.technician}</p>
-                  <p><span className="text-gray-500">Bay:</span> {detailsAppointment.bay}</p>
-                  <p><span className="text-gray-500">Services:</span></p>
-                  <ul className="ml-4 list-disc">
-                    {detailsAppointment.services.map((service, index) => (
-                      <li key={index}>{service}</li>
-                    ))}
-                  </ul>
+                  <p><span className="text-gray-500">Service:</span> {detailsAppointment.service}</p>
+                  <p><span className="text-gray-500">Technician:</span> {detailsAppointment.assigned_technician || 'Unassigned'}</p>
+                  <p><span className="text-gray-500">Bay:</span> {detailsAppointment.bay || 'Not assigned'}</p>
+                  {detailsAppointment.services && detailsAppointment.services.length > 0 && (
+                    <>
+                      <p><span className="text-gray-500">All Services:</span></p>
+                      <ul className="ml-4 list-disc">
+                        {detailsAppointment.services.map((service, index) => (
+                          <li key={index}>{service}</li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
                 </div>
               </div>
               
               <div className="col-span-2">
                 <h4 className="font-semibold text-gray-700 mb-2">Cost Information</h4>
                 <div className="space-y-2 text-sm">
-                  <p><span className="text-gray-500">Estimated Cost:</span> ${detailsAppointment.estimatedCost}</p>
-                  {detailsAppointment.actualCost && (
-                    <p><span className="text-gray-500">Actual Cost:</span> ${detailsAppointment.actualCost}</p>
+                  <p><span className="text-gray-500">Estimated Cost:</span> ${detailsAppointment.estimated_cost?.total || 0}</p>
+                  {detailsAppointment.actual_cost?.total && (
+                    <p><span className="text-gray-500">Actual Cost:</span> ${detailsAppointment.actual_cost.total}</p>
                   )}
                 </div>
               </div>
@@ -753,8 +793,18 @@ export default function AdminAppointments() {
               <div className="col-span-2">
                 <h4 className="font-semibold text-gray-700 mb-2">Notes</h4>
                 <div className="space-y-2 text-sm">
-                  <p><span className="text-gray-500">Customer Notes:</span> {detailsAppointment.notes || "None"}</p>
-                  <p><span className="text-gray-500">Internal Notes:</span> {detailsAppointment.internalNotes || "None"}</p>
+                  <p><span className="text-gray-500">Customer Message:</span> {detailsAppointment.message || "None"}</p>
+                  {detailsAppointment.notes && detailsAppointment.notes.length > 0 && (
+                    <>
+                      <p className="text-gray-500">Internal Notes:</p>
+                      {detailsAppointment.notes.map((note, index) => (
+                        <div key={index} className="ml-4 p-2 bg-gray-50 rounded">
+                          <p className="text-xs text-gray-500">{note.author} - {new Date(note.created_at).toLocaleString()}</p>
+                          <p>{note.message}</p>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               </div>
               
@@ -763,7 +813,7 @@ export default function AdminAppointments() {
                 <div className="space-y-2 text-sm">
                   <p>
                     <span className="text-gray-500">Confirmation:</span> 
-                    {detailsAppointment.confirmationSent ? (
+                    {detailsAppointment.confirmation_sent ? (
                       <span className="text-green-600 ml-2">✓ Sent</span>
                     ) : (
                       <span className="text-gray-400 ml-2">Not sent</span>
@@ -771,7 +821,7 @@ export default function AdminAppointments() {
                   </p>
                   <p>
                     <span className="text-gray-500">Reminder:</span> 
-                    {detailsAppointment.reminderSent ? (
+                    {detailsAppointment.reminder_sent ? (
                       <span className="text-green-600 ml-2">✓ Sent</span>
                     ) : (
                       <span className="text-gray-400 ml-2">Not sent</span>
@@ -783,6 +833,6 @@ export default function AdminAppointments() {
           </div>
         </div>
       )}
-    </div>
+    </AdminLayout>
   );
 }

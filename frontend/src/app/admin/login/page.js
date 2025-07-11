@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { supabase, signIn } from "@/lib/supabase";
 
 export default function AdminLogin() {
   const router = useRouter();
@@ -17,7 +18,24 @@ export default function AdminLogin() {
 
   useEffect(() => {
     setMounted(true);
+    checkExistingSession();
   }, []);
+
+  const checkExistingSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      // Check if user is admin
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (profile?.role === 'admin') {
+        router.push("/admin");
+      }
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -34,34 +52,36 @@ export default function AdminLogin() {
     setError("");
 
     try {
-      // Make API call to authenticate
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(credentials),
-      });
+      const { data, error: signInError } = await signIn(
+        credentials.email,
+        credentials.password
+      );
 
-      if (response.ok) {
-        const data = await response.json();
+      if (signInError) {
+        setError(signInError.message);
+        return;
+      }
+
+      if (data.user) {
+        // Check if user is admin
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
         
-        // Store authentication token
-        localStorage.setItem("adminAuthenticated", "true");
-        localStorage.setItem("adminAuthTime", Date.now().toString());
-        if (data.token) {
-          localStorage.setItem("adminToken", data.token);
+        if (profile?.role !== 'admin') {
+          await supabase.auth.signOut();
+          setError("Access denied. Admin privileges required.");
+          return;
         }
-        
-        // Redirect to admin vehicles page
-        router.push("/admin/vehicles");
-      } else {
-        const errorData = await response.json();
-        setError(errorData.message || "Invalid email or password");
+
+        // Redirect to admin dashboard
+        router.push("/admin");
       }
     } catch (error) {
       console.error("Login error:", error);
-      setError("Unable to connect to server. Please try again later.");
+      setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -117,7 +137,7 @@ export default function AdminLogin() {
                 onChange={handleChange}
                 required
                 className="w-full px-4 py-3 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none transition-colors"
-                placeholder="Enter your email"
+                placeholder="admin@autopro.com"
                 autoComplete="email"
               />
             </div>
@@ -155,9 +175,12 @@ export default function AdminLogin() {
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-400">
               Forgot your password?{" "}
-              <a href="mailto:service@autoprorepairs.com" className="text-blue-400 hover:text-blue-300">
-                Contact Support
-              </a>
+              <button 
+                onClick={() => router.push('/admin/reset-password')}
+                className="text-blue-400 hover:text-blue-300"
+              >
+                Reset Password
+              </button>
             </p>
           </div>
         </div>
@@ -168,6 +191,17 @@ export default function AdminLogin() {
             ← Back to Website
           </a>
         </div>
+
+        {/* Demo Credentials Notice */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-6 bg-blue-900 bg-opacity-50 rounded-lg p-4 text-center">
+            <p className="text-sm text-blue-300">
+              Demo Admin Credentials:<br />
+              Email: admin@autopro.com<br />
+              Password: autopro2025
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
