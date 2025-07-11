@@ -18,18 +18,118 @@ export default function Appointment() {
     message: "",
   });
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState(null);
+  const [errors, setErrors] = useState({});
+
+  // Get tomorrow's date as minimum date
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const minDate = tomorrow.toISOString().split('T')[0];
+
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+    
+    // Phone number formatting
+    if (name === 'phone') {
+      const cleaned = value.replace(/\D/g, '');
+      let formatted = cleaned;
+      if (cleaned.length >= 6) {
+        formatted = `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 10)}`;
+      } else if (cleaned.length >= 3) {
+        formatted = `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;
+      }
+      setFormData({ ...formData, [name]: formatted });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
+    
+    // Clear error for this field when user types
+    if (errors[name]) {
+      setErrors({ ...errors, [name]: "" });
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!formData.name.trim()) {
+      newErrors.name = "Name is required";
+    }
+    
+    if (!formData.email.trim()) {
+      newErrors.email = "Email is required";
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = "Email is invalid";
+    }
+    
+    if (!formData.phone.trim()) {
+      newErrors.phone = "Phone number is required";
+    } else if (formData.phone.replace(/\D/g, '').length < 10) {
+      newErrors.phone = "Phone number must be 10 digits";
+    }
+    
+    if (!formData.service) {
+      newErrors.service = "Please select a service";
+    }
+    
+    if (!formData.date) {
+      newErrors.date = "Please select a date";
+    }
+    
+    if (!formData.time) {
+      newErrors.time = "Please select a time";
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    // Handle form submission
-    console.log("Form submitted:", formData);
-    // Add API call here
+    
+    if (!validateForm()) {
+      return;
+    }
+    
+    setIsSubmitting(true);
+    setSubmitStatus(null);
+    
+    try {
+      // Simulate API call - replace with actual API endpoint
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Success
+      setSubmitStatus({
+        type: 'success',
+        message: 'Appointment request submitted successfully! We\'ll confirm within 24 hours.'
+      });
+      
+      // Reset form
+      setFormData({
+        name: "",
+        email: "",
+        phone: "",
+        service: "",
+        date: "",
+        time: "",
+        vehicleYear: "",
+        vehicleMake: "",
+        vehicleModel: "",
+        message: "",
+      });
+      
+      // Scroll to top to show success message
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      
+    } catch (error) {
+      setSubmitStatus({
+        type: 'error',
+        message: 'Something went wrong. Please try again or call us directly.'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -58,53 +158,86 @@ export default function Appointment() {
             </p>
           </div>
 
+          {/* Success/Error Message */}
+          {submitStatus && (
+            <div className={`mb-8 p-4 rounded ${
+              submitStatus.type === 'success' 
+                ? 'bg-green-600 text-white' 
+                : 'bg-red-600 text-white'
+            }`}>
+              <p className="font-semibold">{submitStatus.message}</p>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="bg-gray-900 rounded-lg p-8">
             <div className="grid md:grid-cols-2 gap-6">
               {/* Personal Information */}
               <div>
-                <label className="block text-sm font-semibold mb-2">Full Name *</label>
+                <label className="block text-sm font-semibold mb-2">
+                  Full Name <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   name="name"
                   value={formData.name}
                   onChange={handleChange}
-                  required
-                  className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                  className={`w-full bg-gray-800 text-white px-4 py-3 rounded border ${
+                    errors.name ? 'border-red-500' : 'border-gray-700'
+                  } focus:border-blue-500 focus:outline-none transition-colors`}
                 />
+                {errors.name && (
+                  <p className="text-red-500 text-sm mt-1">{errors.name}</p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-2">Email *</label>
+                <label className="block text-sm font-semibold mb-2">
+                  Email <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="email"
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  required
-                  className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                  className={`w-full bg-gray-800 text-white px-4 py-3 rounded border ${
+                    errors.email ? 'border-red-500' : 'border-gray-700'
+                  } focus:border-blue-500 focus:outline-none transition-colors`}
                 />
+                {errors.email && (
+                  <p className="text-red-500 text-sm mt-1">{errors.email}</p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-2">Phone Number *</label>
+                <label className="block text-sm font-semibold mb-2">
+                  Phone Number <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="tel"
                   name="phone"
                   value={formData.phone}
                   onChange={handleChange}
-                  required
-                  className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                  placeholder="(123) 456-7890"
+                  className={`w-full bg-gray-800 text-white px-4 py-3 rounded border ${
+                    errors.phone ? 'border-red-500' : 'border-gray-700'
+                  } focus:border-blue-500 focus:outline-none transition-colors`}
                 />
+                {errors.phone && (
+                  <p className="text-red-500 text-sm mt-1">{errors.phone}</p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-2">Service Type *</label>
+                <label className="block text-sm font-semibold mb-2">
+                  Service Type <span className="text-red-500">*</span>
+                </label>
                 <select
                   name="service"
                   value={formData.service}
                   onChange={handleChange}
-                  required
-                  className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                  className={`w-full bg-gray-800 text-white px-4 py-3 rounded border ${
+                    errors.service ? 'border-red-500' : 'border-gray-700'
+                  } focus:border-blue-500 focus:outline-none transition-colors`}
                 >
                   <option value="">Select a Service</option>
                   <option value="oil-change">Oil Change</option>
@@ -114,43 +247,70 @@ export default function Appointment() {
                   <option value="ac-service">AC Service</option>
                   <option value="tire-service">Tire Service</option>
                   <option value="diagnostic">Diagnostic Check</option>
+                  <option value="state-inspection">State Inspection</option>
                   <option value="other">Other</option>
                 </select>
+                {errors.service && (
+                  <p className="text-red-500 text-sm mt-1">{errors.service}</p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-2">Preferred Date *</label>
+                <label className="block text-sm font-semibold mb-2">
+                  Preferred Date <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="date"
                   name="date"
                   value={formData.date}
                   onChange={handleChange}
-                  required
-                  className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                  min={minDate}
+                  className={`w-full bg-gray-800 text-white px-4 py-3 rounded border ${
+                    errors.date ? 'border-red-500' : 'border-gray-700'
+                  } focus:border-blue-500 focus:outline-none transition-colors`}
                 />
+                {errors.date && (
+                  <p className="text-red-500 text-sm mt-1">{errors.date}</p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-semibold mb-2">Preferred Time *</label>
+                <label className="block text-sm font-semibold mb-2">
+                  Preferred Time <span className="text-red-500">*</span>
+                </label>
                 <select
                   name="time"
                   value={formData.time}
                   onChange={handleChange}
-                  required
-                  className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                  className={`w-full bg-gray-800 text-white px-4 py-3 rounded border ${
+                    errors.time ? 'border-red-500' : 'border-gray-700'
+                  } focus:border-blue-500 focus:outline-none transition-colors`}
                 >
                   <option value="">Select a Time</option>
                   <option value="8:00 AM">8:00 AM</option>
+                  <option value="8:30 AM">8:30 AM</option>
                   <option value="9:00 AM">9:00 AM</option>
+                  <option value="9:30 AM">9:30 AM</option>
                   <option value="10:00 AM">10:00 AM</option>
+                  <option value="10:30 AM">10:30 AM</option>
                   <option value="11:00 AM">11:00 AM</option>
+                  <option value="11:30 AM">11:30 AM</option>
                   <option value="12:00 PM">12:00 PM</option>
+                  <option value="12:30 PM">12:30 PM</option>
                   <option value="1:00 PM">1:00 PM</option>
+                  <option value="1:30 PM">1:30 PM</option>
                   <option value="2:00 PM">2:00 PM</option>
+                  <option value="2:30 PM">2:30 PM</option>
                   <option value="3:00 PM">3:00 PM</option>
+                  <option value="3:30 PM">3:30 PM</option>
                   <option value="4:00 PM">4:00 PM</option>
+                  <option value="4:30 PM">4:30 PM</option>
                   <option value="5:00 PM">5:00 PM</option>
+                  <option value="5:30 PM">5:30 PM</option>
                 </select>
+                {errors.time && (
+                  <p className="text-red-500 text-sm mt-1">{errors.time}</p>
+                )}
               </div>
             </div>
 
@@ -166,7 +326,8 @@ export default function Appointment() {
                     value={formData.vehicleYear}
                     onChange={handleChange}
                     placeholder="e.g., 2020"
-                    className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                    maxLength="4"
+                    className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors"
                   />
                 </div>
 
@@ -178,7 +339,7 @@ export default function Appointment() {
                     value={formData.vehicleMake}
                     onChange={handleChange}
                     placeholder="e.g., Toyota"
-                    className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                    className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors"
                   />
                 </div>
 
@@ -190,7 +351,7 @@ export default function Appointment() {
                     value={formData.vehicleModel}
                     onChange={handleChange}
                     placeholder="e.g., Camry"
-                    className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                    className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors"
                   />
                 </div>
               </div>
@@ -205,15 +366,30 @@ export default function Appointment() {
                 onChange={handleChange}
                 rows={4}
                 placeholder="Please describe the issue or service you need..."
-                className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none"
+                className="w-full bg-gray-800 text-white px-4 py-3 rounded border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors resize-none"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded font-semibold transition-colors"
+              disabled={isSubmitting}
+              className={`w-full py-3 rounded font-semibold transition-all ${
+                isSubmitting 
+                  ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
             >
-              Book Appointment
+              {isSubmitting ? (
+                <span className="flex items-center justify-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Submitting...
+                </span>
+              ) : (
+                'Book Appointment'
+              )}
             </button>
           </form>
 
@@ -225,7 +401,7 @@ export default function Appointment() {
               <p className="text-gray-300 mb-4">
                 Need immediate assistance? Give us a call!
               </p>
-              <a href="tel:3523395181" className="text-blue-400 hover:text-blue-300 text-lg font-semibold">
+              <a href="tel:3523395181" className="text-blue-400 hover:text-blue-300 text-lg font-semibold transition-colors">
                 (352) 339-5181
               </a>
             </div>
@@ -239,7 +415,30 @@ export default function Appointment() {
                 Mon-Fri: 8AM-6PM<br />
                 Sat: 9AM-3PM
               </p>
+              <a 
+                href="https://maps.google.com/?q=123+Main+Street+Leesburg+FL+34748" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block transition-colors"
+              >
+                Get Directions →
+              </a>
             </div>
+          </div>
+
+          {/* Additional Services */}
+          <div className="mt-12 bg-gray-900 rounded-lg p-8 text-center">
+            <h3 className="text-2xl font-bold mb-4">Need Emergency Service?</h3>
+            <p className="text-gray-300 mb-6">
+              We offer 24/7 towing services throughout the Leesburg area. 
+              Don't let a breakdown ruin your day - we're here to help!
+            </p>
+            <a 
+              href="tel:3523395181"
+              className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded font-semibold transition-colors inline-block"
+            >
+              Call for Emergency Towing
+            </a>
           </div>
         </div>
       </section>

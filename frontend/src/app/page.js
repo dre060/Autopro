@@ -146,11 +146,11 @@ export default function Home() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Example Vehicle Card */}
+            {/* Example Vehicle Card 1 */}
             <div className="bg-gray-800 rounded-lg overflow-hidden hover:shadow-xl transition-shadow">
               <div className="relative h-48">
                 <Image
-                  src="/hero.jpg" // Replace with actual vehicle image
+                  src="/hero.jpg"
                   alt="2018 Honda Accord"
                   fill
                   className="object-cover"
@@ -160,11 +160,62 @@ export default function Home() {
                 <h3 className="text-xl font-bold mb-2">2018 Honda Accord</h3>
                 <p className="text-gray-400 mb-1">45,000 miles</p>
                 <p className="text-2xl font-bold text-blue-400">$18,995</p>
+                <p className="text-sm text-green-400 mt-2">✓ Financing Available</p>
               </div>
             </div>
-            
-            {/* Add more vehicle cards as needed */}
+
+            {/* Example Vehicle Card 2 */}
+            <div className="bg-gray-800 rounded-lg overflow-hidden hover:shadow-xl transition-shadow">
+              <div className="relative h-48">
+                <Image
+                  src="/hero.jpg"
+                  alt="2020 Toyota Camry"
+                  fill
+                  className="object-cover"
+                />
+              </div>
+              <div className="p-4">
+                <h3 className="text-xl font-bold mb-2">2020 Toyota Camry</h3>
+                <p className="text-gray-400 mb-1">32,000 miles</p>
+                <p className="text-2xl font-bold text-blue-400">$22,995</p>
+                <p className="text-sm text-green-400 mt-2">✓ Financing Available</p>
+              </div>
+            </div>
+
+            {/* Example Vehicle Card 3 */}
+            <div className="bg-gray-800 rounded-lg overflow-hidden hover:shadow-xl transition-shadow">
+              <div className="relative h-48">
+                <Image
+                  src="/hero.jpg"
+                  alt="2019 Ford F-150"
+                  fill
+                  className="object-cover"
+                />
+              </div>
+              <div className="p-4">
+                <h3 className="text-xl font-bold mb-2">2019 Ford F-150</h3>
+                <p className="text-gray-400 mb-1">38,000 miles</p>
+                <p className="text-2xl font-bold text-blue-400">$28,995</p>
+                <p className="text-sm text-green-400 mt-2">✓ Financing Available</p>
+              </div>
+            </div>
           </div>
+        </div>
+      </section>
+
+      {/* Financing Banner */}
+      <section className="py-12 px-4 bg-green-600">
+        <div className="container mx-auto max-w-4xl text-center">
+          <h2 className="text-3xl font-bold mb-4">Easy Financing Available</h2>
+          <p className="text-xl mb-6">
+            Get approved in minutes! Low down payments and flexible terms for all credit types.
+          </p>
+          <Link 
+            href="/inventory"
+            className="bg-white hover:bg-gray-100 text-green-600 px-8 py-3 rounded font-semibold transition-colors inline-block"
+          >
+            Browse Inventory with Financing
+          </Link>
         </div>
       </section>
 
