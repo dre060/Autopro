@@ -1,58 +1,45 @@
 // frontend/src/app/layout.js
+"use client";
+
 import "./globals.css";
 import Link from "next/link";
 import Image from "next/image";
-
-export const metadata = {
-  title: "AUTO PRO REPAIRS SALES & SERVICES - Trusted Auto Repair & Vehicle Sales in Leesburg, FL",
-  description: "Family-owned auto repair shop and used car dealership in Leesburg, FL. ASE certified technicians, 20+ years experience. Affordable, honest, done right the first time.",
-  keywords: "auto repair, car repair, oil change, brake service, engine repair, used cars, Leesburg FL, ASE certified, towing service",
-  openGraph: {
-    title: "AUTO PRO REPAIRS SALES & SERVICES",
-    description: "Trusted auto repair and vehicle sales in Leesburg, FL",
-    images: ["/og-image.jpg"],
-    url: "https://autoprorepairs.com",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "AUTO PRO REPAIRS SALES & SERVICES",
-    description: "Trusted auto repair and vehicle sales in Leesburg, FL",
-    images: ["/og-image.jpg"],
-  },
-  robots: {
-    index: true,
-    follow: true,
-  },
-  alternates: {
-    canonical: "https://autoprorepairs.com",
-  },
-};
+import { useState } from "react";
 
 export default function RootLayout({ children }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const toggleMobileMenu = () => {
+    setMobileMenuOpen(!mobileMenuOpen);
+  };
+
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
+  };
+
   return (
     <html lang="en">
       <body className="antialiased bg-black text-white">
         {/* Navigation Header */}
-        <header className="absolute top-0 left-0 w-full z-50 bg-transparent">
-          <div className="container mx-auto px-4 py-4">
+        <header className="absolute top-0 left-0 w-full z-50 bg-black/90 backdrop-blur-sm">
+          <div className="container mx-auto px-4 py-3 md:py-4">
             <nav className="flex items-center justify-between">
               {/* Logo */}
-              <Link href="/" className="flex items-center">
+              <Link href="/" className="flex items-center" onClick={closeMobileMenu}>
                 <Image 
                   src="/logo.jpg" 
                   alt="AUTO PRO" 
-                  width={150} 
-                  height={80} 
-                  className="object-contain"
+                  width={120} 
+                  height={60} 
+                  className="object-contain md:w-[150px] md:h-[80px]"
                 />
-                <div className="ml-2">
-                  <h1 className="text-xl font-bold leading-none">AUTO PRO REPAIRS SALES & SERVICES</h1>
+                <div className="ml-2 hidden sm:block">
+                  <h1 className="text-lg md:text-xl font-bold leading-none">AUTO PRO REPAIRS SALES & SERVICES</h1>
                   <p className="text-xs text-gray-300">ASE CERTIFIED TECHNICIANS</p>
                 </div>
               </Link>
 
-              {/* Navigation Links */}
+              {/* Desktop Navigation Links */}
               <div className="hidden md:flex items-center space-x-8">
                 <Link href="/" className="hover:text-blue-400 transition-colors">
                   Home
@@ -78,25 +65,114 @@ export default function RootLayout({ children }) {
               </div>
 
               {/* Mobile Menu Button */}
-              <button className="md:hidden" aria-label="Open mobile menu">
+              <button 
+                className="md:hidden p-2 rounded-lg hover:bg-gray-800 transition-colors"
+                aria-label="Toggle mobile menu"
+                onClick={toggleMobileMenu}
+              >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  {mobileMenuOpen ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  )}
                 </svg>
               </button>
             </nav>
           </div>
+
+          {/* Mobile Menu Overlay */}
+          {mobileMenuOpen && (
+            <div className="md:hidden fixed inset-0 top-[60px] bg-black/95 backdrop-blur-md z-50">
+              <div className="container mx-auto px-4 py-6">
+                <div className="flex flex-col space-y-4">
+                  <Link 
+                    href="/" 
+                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    onClick={closeMobileMenu}
+                  >
+                    Home
+                  </Link>
+                  <Link 
+                    href="/about" 
+                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    onClick={closeMobileMenu}
+                  >
+                    About
+                  </Link>
+                  <Link 
+                    href="/services" 
+                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    onClick={closeMobileMenu}
+                  >
+                    Services
+                  </Link>
+                  <Link 
+                    href="/inventory" 
+                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    onClick={closeMobileMenu}
+                  >
+                    Inventory
+                  </Link>
+                  <Link 
+                    href="/specials" 
+                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors text-yellow-400 font-semibold"
+                    onClick={closeMobileMenu}
+                  >
+                    Specials
+                  </Link>
+                  <Link 
+                    href="/appointment" 
+                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    onClick={closeMobileMenu}
+                  >
+                    Book Appointment
+                  </Link>
+                  <Link 
+                    href="/contact" 
+                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    onClick={closeMobileMenu}
+                  >
+                    Contact
+                  </Link>
+                  
+                  {/* Call Button */}
+                  <a 
+                    href="tel:3523395181" 
+                    className="bg-blue-600 hover:bg-blue-700 py-3 px-4 rounded-lg font-semibold text-center transition-all"
+                    onClick={closeMobileMenu}
+                  >
+                    <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                    Call: (352) 339-5181
+                  </a>
+
+                  {/* Business Hours in Mobile Menu */}
+                  <div className="border-t border-gray-800 pt-4 mt-4">
+                    <p className="text-sm text-gray-400 px-4">Hours:</p>
+                    <p className="text-sm px-4">Mon-Fri: 8AM-6PM</p>
+                    <p className="text-sm px-4">Saturday: 9AM-3PM</p>
+                    <p className="text-sm px-4">Sunday: Closed</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </header>
 
         {/* Main Content */}
-        <main>{children}</main>
+        <main className={mobileMenuOpen ? "overflow-hidden" : ""}>
+          {children}
+        </main>
 
-        {/* Footer */}
-        <footer className="bg-gray-900 text-white py-12 px-4">
+        {/* Footer - Simplified for Mobile */}
+        <footer className="bg-gray-900 text-white py-8 md:py-12 px-4">
           <div className="container mx-auto">
-            {/* Newsletter Signup */}
-            <div className="bg-blue-600 rounded-lg p-8 mb-12 text-center">
-              <h3 className="text-2xl font-bold mb-4">Get Exclusive Deals & Service Reminders</h3>
-              <p className="mb-6">Join our newsletter for special offers and maintenance tips!</p>
+            {/* Newsletter Signup - Responsive */}
+            <div className="bg-blue-600 rounded-lg p-6 md:p-8 mb-8 md:mb-12 text-center">
+              <h3 className="text-xl md:text-2xl font-bold mb-4">Get Exclusive Deals & Service Reminders</h3>
+              <p className="mb-6 text-sm md:text-base">Join our newsletter for special offers and maintenance tips!</p>
               <form className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
                 <input 
                   type="email" 
@@ -113,10 +189,11 @@ export default function RootLayout({ children }) {
               </form>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            {/* Footer Grid - Responsive */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
               <div>
-                <h3 className="text-xl font-bold mb-4">AUTO PRO REPAIRS SALES & SERVICES</h3>
-                <p className="text-gray-400 mb-4">
+                <h3 className="text-lg md:text-xl font-bold mb-4">AUTO PRO REPAIRS SALES & SERVICES</h3>
+                <p className="text-gray-400 mb-4 text-sm">
                   Family-owned auto repair and sales serving Leesburg, FL for 3 years with 20+ years of experience.
                 </p>
                 <div className="flex space-x-4">
@@ -134,8 +211,8 @@ export default function RootLayout({ children }) {
               </div>
               
               <div>
-                <h3 className="text-xl font-bold mb-4">Quick Links</h3>
-                <ul className="space-y-2 text-gray-400">
+                <h3 className="text-lg md:text-xl font-bold mb-4">Quick Links</h3>
+                <ul className="space-y-2 text-gray-400 text-sm">
                   <li><Link href="/services" className="hover:text-white">Our Services</Link></li>
                   <li><Link href="/inventory" className="hover:text-white">Vehicle Inventory</Link></li>
                   <li><Link href="/appointment" className="hover:text-white">Book Appointment</Link></li>
@@ -146,8 +223,8 @@ export default function RootLayout({ children }) {
               </div>
               
               <div>
-                <h3 className="text-xl font-bold mb-4">Contact Info</h3>
-                <div className="space-y-3 text-gray-400">
+                <h3 className="text-lg md:text-xl font-bold mb-4">Contact Info</h3>
+                <div className="space-y-3 text-gray-400 text-sm">
                   <p className="flex items-start">
                     <span className="mr-2">📍</span>
                     806 Hood Ave<br />Leesburg, FL 34748
@@ -158,14 +235,14 @@ export default function RootLayout({ children }) {
                   </p>
                   <p className="flex items-center">
                     <span className="mr-2">✉️</span>
-                    <a href="mailto:service@autoprorepairs.com" className="hover:text-white">service@autoprorepairs.com</a>
+                    <a href="mailto:service@autoprorepairs.com" className="hover:text-white break-all">service@autoprorepairs.com</a>
                   </p>
                 </div>
               </div>
               
               <div>
-                <h3 className="text-xl font-bold mb-4">Business Hours</h3>
-                <ul className="space-y-1 text-gray-400">
+                <h3 className="text-lg md:text-xl font-bold mb-4">Business Hours</h3>
+                <ul className="space-y-1 text-gray-400 text-sm">
                   <li className="flex justify-between">
                     <span>Monday - Friday:</span>
                     <span>8:00 AM - 6:00 PM</span>
@@ -180,13 +257,13 @@ export default function RootLayout({ children }) {
                   </li>
                 </ul>
                 <div className="mt-4 p-3 bg-green-600 rounded text-center">
-                  <p className="font-semibold">Emergency Towing Available 24/7</p>
+                  <p className="font-semibold text-sm">Emergency Towing Available 24/7</p>
                 </div>
               </div>
             </div>
             
             <div className="container mx-auto mt-8 pt-8 border-t border-gray-800">
-              <div className="flex flex-col md:flex-row justify-between items-center text-gray-400 text-sm">
+              <div className="flex flex-col md:flex-row justify-between items-center text-gray-400 text-xs md:text-sm">
                 <p>&copy; 2025 AUTO PRO REPAIRS SALES & SERVICES LLC. All rights reserved.</p>
                 <div className="flex space-x-4 mt-4 md:mt-0">
                   <Link href="/privacy" className="hover:text-white">Privacy Policy</Link>
@@ -198,26 +275,26 @@ export default function RootLayout({ children }) {
           </div>
         </footer>
 
-        {/* Floating Action Buttons */}
-        <div className="fixed bottom-6 right-6 flex flex-col space-y-3 z-40">
+        {/* Floating Action Buttons - Better Mobile Positioning */}
+        <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col space-y-3 z-40">
           <a 
             href="tel:3523395181"
-            className="bg-green-600 hover:bg-green-700 text-white p-4 rounded-full shadow-lg transition-all transform hover:scale-110"
+            className="bg-green-600 hover:bg-green-700 text-white p-3 md:p-4 rounded-full shadow-lg transition-all transform hover:scale-110"
             aria-label="Call us"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
             </svg>
           </a>
-          <a 
+          <Link 
             href="/appointment"
-            className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-all transform hover:scale-110"
+            className="bg-blue-600 hover:bg-blue-700 text-white p-3 md:p-4 rounded-full shadow-lg transition-all transform hover:scale-110"
             aria-label="Book appointment"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-          </a>
+          </Link>
         </div>
       </body>
     </html>
