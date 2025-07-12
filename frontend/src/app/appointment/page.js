@@ -96,36 +96,49 @@ export default function Appointment() {
     setSubmitStatus(null);
     
     try {
-      // Simulate API call - replace with actual API endpoint
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Success
-      setSubmitStatus({
-        type: 'success',
-        message: 'Appointment request submitted successfully! We\'ll confirm within 24 hours.'
+      const response = await fetch('/api/appointments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
       });
-      
-      // Reset form
-      setFormData({
-        name: "",
-        email: "",
-        phone: "",
-        service: "",
-        date: "",
-        time: "",
-        vehicleYear: "",
-        vehicleMake: "",
-        vehicleModel: "",
-        message: "",
-      });
-      
-      // Scroll to top to show success message
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setSubmitStatus({
+          type: 'success',
+          message: 'Appointment request submitted successfully! We\'ll confirm within 24 hours.'
+        });
+        
+        // Reset form
+        setFormData({
+          name: "",
+          email: "",
+          phone: "",
+          service: "",
+          date: "",
+          time: "",
+          vehicleYear: "",
+          vehicleMake: "",
+          vehicleModel: "",
+          message: "",
+        });
+        
+        // Scroll to top to show success message
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        setSubmitStatus({
+          type: 'error',
+          message: data.error || 'Something went wrong. Please try again or call us directly.'
+        });
+      }
     } catch (error) {
+      console.error('Appointment submission error:', error);
       setSubmitStatus({
         type: 'error',
-        message: 'Something went wrong. Please try again or call us directly.'
+        message: 'Unable to submit appointment. Please call us at (352) 933-5181.'
       });
     } finally {
       setIsSubmitting(false);
@@ -135,7 +148,7 @@ export default function Appointment() {
   return (
     <>
       {/* Hero Section */}
-      <section className="relative h-[40vh] min-h-[400px] w-full">
+      <section className="relative h-[40vh] min-h-[400px] w-full pt-20">
         <Image
           src="/hero.jpg"
           alt="Book an Appointment"
@@ -240,15 +253,16 @@ export default function Appointment() {
                   } focus:border-blue-500 focus:outline-none transition-colors`}
                 >
                   <option value="">Select a Service</option>
-                  <option value="oil-change">Oil Change</option>
-                  <option value="brake-service">Brake Service</option>
-                  <option value="engine-repair">Engine Repair</option>
-                  <option value="transmission">Transmission Service</option>
-                  <option value="ac-service">AC Service</option>
-                  <option value="tire-service">Tire Service</option>
-                  <option value="diagnostic">Diagnostic Check</option>
-                  <option value="state-inspection">State Inspection</option>
-                  <option value="other">Other</option>
+                  <option value="Oil Change">Oil Change</option>
+                  <option value="Brake Service">Brake Service</option>
+                  <option value="Engine Repair">Engine Repair</option>
+                  <option value="Transmission Service">Transmission Service</option>
+                  <option value="AC Service">AC Service</option>
+                  <option value="Tire Service">Tire Service</option>
+                  <option value="Diagnostic Check">Diagnostic Check</option>
+                  <option value="State Inspection">State Inspection</option>
+                  <option value="General Maintenance">General Maintenance</option>
+                  <option value="Other">Other (Please Specify in Message)</option>
                 </select>
                 {errors.service && (
                   <p className="text-red-500 text-sm mt-1">{errors.service}</p>
@@ -287,26 +301,26 @@ export default function Appointment() {
                   } focus:border-blue-500 focus:outline-none transition-colors`}
                 >
                   <option value="">Select a Time</option>
-                  <option value="8:00 AM">8:00 AM</option>
-                  <option value="8:30 AM">8:30 AM</option>
-                  <option value="9:00 AM">9:00 AM</option>
-                  <option value="9:30 AM">9:30 AM</option>
-                  <option value="10:00 AM">10:00 AM</option>
-                  <option value="10:30 AM">10:30 AM</option>
-                  <option value="11:00 AM">11:00 AM</option>
-                  <option value="11:30 AM">11:30 AM</option>
-                  <option value="12:00 PM">12:00 PM</option>
-                  <option value="12:30 PM">12:30 PM</option>
-                  <option value="1:00 PM">1:00 PM</option>
-                  <option value="1:30 PM">1:30 PM</option>
-                  <option value="2:00 PM">2:00 PM</option>
-                  <option value="2:30 PM">2:30 PM</option>
-                  <option value="3:00 PM">3:00 PM</option>
-                  <option value="3:30 PM">3:30 PM</option>
-                  <option value="4:00 PM">4:00 PM</option>
-                  <option value="4:30 PM">4:30 PM</option>
-                  <option value="5:00 PM">5:00 PM</option>
-                  <option value="5:30 PM">5:30 PM</option>
+                  <option value="08:00">8:00 AM</option>
+                  <option value="08:30">8:30 AM</option>
+                  <option value="09:00">9:00 AM</option>
+                  <option value="09:30">9:30 AM</option>
+                  <option value="10:00">10:00 AM</option>
+                  <option value="10:30">10:30 AM</option>
+                  <option value="11:00">11:00 AM</option>
+                  <option value="11:30">11:30 AM</option>
+                  <option value="12:00">12:00 PM</option>
+                  <option value="12:30">12:30 PM</option>
+                  <option value="13:00">1:00 PM</option>
+                  <option value="13:30">1:30 PM</option>
+                  <option value="14:00">2:00 PM</option>
+                  <option value="14:30">2:30 PM</option>
+                  <option value="15:00">3:00 PM</option>
+                  <option value="15:30">3:30 PM</option>
+                  <option value="16:00">4:00 PM</option>
+                  <option value="16:30">4:30 PM</option>
+                  <option value="17:00">5:00 PM</option>
+                  <option value="17:30">5:30 PM</option>
                 </select>
                 {errors.time && (
                   <p className="text-red-500 text-sm mt-1">{errors.time}</p>
@@ -401,8 +415,8 @@ export default function Appointment() {
               <p className="text-gray-300 mb-4">
                 Need immediate assistance? Give us a call!
               </p>
-              <a href="tel:3523395181" className="text-blue-400 hover:text-blue-300 text-lg font-semibold transition-colors">
-                (352) 339-5181
+              <a href="tel:3529335181" className="text-blue-400 hover:text-blue-300 text-lg font-semibold transition-colors">
+                (352) 933-5181
               </a>
             </div>
 
@@ -410,13 +424,13 @@ export default function Appointment() {
               <div className="text-3xl mb-4">📍</div>
               <h3 className="text-xl font-bold mb-2">Visit Our Shop</h3>
               <p className="text-gray-300">
-                123 Main Street<br />
+                806 Hood Ave<br />
                 Leesburg, FL 34748<br />
                 Mon-Fri: 8AM-6PM<br />
                 Sat: 9AM-3PM
               </p>
               <a 
-                href="https://maps.google.com/?q=123+Main+Street+Leesburg+FL+34748" 
+                href="https://maps.google.com/?q=806+Hood+Ave+Leesburg+FL+34748" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-blue-400 hover:text-blue-300 text-sm mt-2 inline-block transition-colors"
@@ -434,7 +448,7 @@ export default function Appointment() {
               Don't let a breakdown ruin your day - we're here to help!
             </p>
             <a 
-              href="tel:3523395181"
+              href="tel:3529335181"
               className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded font-semibold transition-colors inline-block"
             >
               Call for Emergency Towing
