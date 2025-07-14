@@ -107,8 +107,13 @@ export const getVehicleById = async (id) => {
     .single();
   
   // Increment views if found
-  if (data) {
-    await supabase.rpc('increment_vehicle_views', { vehicle_id: id });
+  if (data && !error) {
+    await supabase
+      .from('vehicles')
+      .update({ 
+        views: (data.views || 0) + 1 
+      })
+      .eq('id', id);
   }
   
   return { data, error };
@@ -138,7 +143,7 @@ export const createVehicle = async (vehicleData, images = []) => {
           throw new Error(`Failed to upload image: ${uploadError.message}`);
         }
         
-        // Get public URL
+        // Get public URL - Fixed to handle the correct response structure
         const { data: urlData } = supabase.storage
           .from('vehicle-images')
           .getPublicUrl(fileName);
@@ -151,19 +156,41 @@ export const createVehicle = async (vehicleData, images = []) => {
       }
     }
 
-    // Prepare vehicle data
+    // Prepare vehicle data with proper field mapping
     const finalVehicleData = {
-      ...vehicleData,
+      year: parseInt(vehicleData.year),
+      make: vehicleData.make,
+      model: vehicleData.model,
+      trim: vehicleData.trim || null,
+      vin: vehicleData.vin || null,
+      price: parseFloat(vehicleData.price),
+      sale_price: vehicleData.sale_price ? parseFloat(vehicleData.sale_price) : null,
+      mileage: parseInt(vehicleData.mileage),
+      body_type: vehicleData.body_type,
+      exterior_color: vehicleData.exterior_color,
+      interior_color: vehicleData.interior_color || null,
+      fuel_type: vehicleData.fuel_type,
+      transmission: vehicleData.transmission,
+      drivetrain: vehicleData.drivetrain || null,
+      engine: vehicleData.engine || null,
+      features: vehicleData.features || [],
+      key_features: vehicleData.key_features || [],
+      financing_available: vehicleData.financing_available || false,
+      monthly_payment: vehicleData.monthly_payment ? parseFloat(vehicleData.monthly_payment) : null,
+      stock_number: vehicleData.stock_number || `AP${Date.now().toString().slice(-6)}`,
+      status: vehicleData.status || 'available',
+      condition: vehicleData.condition || 'Good',
+      description: vehicleData.description || null,
+      carfax_available: vehicleData.carfax_available || false,
+      carfax_url: vehicleData.carfax_url || null,
+      featured: vehicleData.featured || false,
+      accident_history: vehicleData.accident_history || false,
+      number_of_owners: vehicleData.number_of_owners || 1,
+      service_records: vehicleData.service_records || false,
       images: imageUrls,
-      created_at: new Date().toISOString(),
-      views: 0
+      views: 0,
+      created_at: new Date().toISOString()
     };
-
-    // Generate stock number if not provided
-    if (!finalVehicleData.stock_number) {
-      const timestamp = Date.now().toString().slice(-6);
-      finalVehicleData.stock_number = `AP${timestamp}`;
-    }
 
     // Insert vehicle into database
     const { data, error } = await supabase
@@ -175,12 +202,14 @@ export const createVehicle = async (vehicleData, images = []) => {
     if (error) {
       // If database insert fails, try to clean up uploaded images
       if (imageUrls.length > 0) {
-        for (const imageUrl of imageUrls) {
-          const fileName = imageUrl.url.split('/').pop();
-          await supabase.storage
-            .from('vehicle-images')
-            .remove([fileName]);
-        }
+        const filenames = imageUrls.map(img => {
+          const url = img.url;
+          return url.split('/').pop();
+        });
+        
+        await supabase.storage
+          .from('vehicle-images')
+          .remove(filenames);
       }
       throw error;
     }
@@ -194,10 +223,17 @@ export const createVehicle = async (vehicleData, images = []) => {
 
 export const updateVehicle = async (id, updates, newImages = []) => {
   try {
+    // Get existing vehicle data
+    const { data: existingVehicle } = await supabase
+      .from('vehicles')
+      .select('images')
+      .eq('id', id)
+      .single();
+    
+    let imageUrls = existingVehicle?.images || [];
+
     // Handle new image uploads
     if (newImages && newImages.length > 0) {
-      const existingImages = updates.images || [];
-      
       for (let i = 0; i < newImages.length; i++) {
         const image = newImages[i];
         const fileExt = image.name.split('.').pop();
@@ -215,19 +251,32 @@ export const updateVehicle = async (id, updates, newImages = []) => {
             .from('vehicle-images')
             .getPublicUrl(fileName);
           
-          existingImages.push({
+          imageUrls.push({
             url: urlData.publicUrl,
             alt: `${updates.make || ''} ${updates.model || ''} - Image`,
-            isPrimary: existingImages.length === 0
+            isPrimary: imageUrls.length === 0
           });
         }
       }
-      updates.images = existingImages;
     }
+
+    // Prepare update data with proper type conversion
+    const updateData = {
+      ...updates,
+      images: imageUrls
+    };
+
+    // Convert numeric fields
+    if (updateData.year) updateData.year = parseInt(updateData.year);
+    if (updateData.price) updateData.price = parseFloat(updateData.price);
+    if (updateData.sale_price) updateData.sale_price = parseFloat(updateData.sale_price);
+    if (updateData.mileage) updateData.mileage = parseInt(updateData.mileage);
+    if (updateData.monthly_payment) updateData.monthly_payment = parseFloat(updateData.monthly_payment);
+    if (updateData.number_of_owners) updateData.number_of_owners = parseInt(updateData.number_of_owners);
 
     const { data, error } = await supabase
       .from('vehicles')
-      .update(updates)
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();
@@ -298,24 +347,58 @@ export const getAppointments = async (filters = {}) => {
 };
 
 export const createAppointment = async (appointmentData) => {
-  const { data, error } = await supabase
-    .from('appointments')
-    .insert([appointmentData])
-    .select()
-    .single();
+  try {
+    // Prepare appointment data with proper field mapping
+    const finalAppointmentData = {
+      name: appointmentData.name,
+      email: appointmentData.email,
+      phone: appointmentData.phone,
+      service: appointmentData.service,
+      date: appointmentData.date,
+      time: appointmentData.time,
+      end_time: appointmentData.end_time || null,
+      message: appointmentData.message || null,
+      vehicle_info: appointmentData.vehicle_info || null,
+      status: appointmentData.status || 'pending',
+      urgency: appointmentData.urgency || 'medium',
+      technician_id: appointmentData.technician_id || null,
+      assigned_technician: appointmentData.assigned_technician || null,
+      bay: appointmentData.bay || null,
+      estimated_cost: appointmentData.estimated_cost || null,
+      actual_cost: appointmentData.actual_cost || null,
+      notes: appointmentData.notes || [],
+      confirmation_sent: appointmentData.confirmation_sent || false,
+      reminder_sent: appointmentData.reminder_sent || false,
+      created_at: new Date().toISOString()
+    };
 
-  return { data, error };
+    const { data, error } = await supabase
+      .from('appointments')
+      .insert([finalAppointmentData])
+      .select()
+      .single();
+
+    return { data, error };
+  } catch (error) {
+    console.error('Error in createAppointment:', error);
+    return { data: null, error };
+  }
 };
 
 export const updateAppointment = async (id, updates) => {
-  const { data, error } = await supabase
-    .from('appointments')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from('appointments')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
 
-  return { data, error };
+    return { data, error };
+  } catch (error) {
+    console.error('Error in updateAppointment:', error);
+    return { data: null, error };
+  }
 };
 
 export const deleteAppointment = async (id) => {
@@ -342,6 +425,36 @@ export const getServices = async (active = true) => {
   return { data, error };
 };
 
+export const createService = async (serviceData) => {
+  const { data, error } = await supabase
+    .from('services')
+    .insert([serviceData])
+    .select()
+    .single();
+
+  return { data, error };
+};
+
+export const updateService = async (id, updates) => {
+  const { data, error } = await supabase
+    .from('services')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  return { data, error };
+};
+
+export const deleteService = async (id) => {
+  const { error } = await supabase
+    .from('services')
+    .delete()
+    .eq('id', id);
+
+  return { error };
+};
+
 // Testimonial operations
 export const getTestimonials = async (approved = true) => {
   let query = supabase
@@ -358,20 +471,56 @@ export const getTestimonials = async (approved = true) => {
 };
 
 export const createTestimonial = async (testimonialData) => {
+  const finalData = {
+    ...testimonialData,
+    created_at: new Date().toISOString()
+  };
+
   const { data, error } = await supabase
     .from('testimonials')
-    .insert([testimonialData])
+    .insert([finalData])
     .select()
     .single();
 
   return { data, error };
 };
 
+export const updateTestimonial = async (id, updates) => {
+  const { data, error } = await supabase
+    .from('testimonials')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  return { data, error };
+};
+
+export const deleteTestimonial = async (id) => {
+  const { error } = await supabase
+    .from('testimonials')
+    .delete()
+    .eq('id', id);
+
+  return { error };
+};
+
 // Contact message operations
 export const createContactMessage = async (messageData) => {
+  const finalData = {
+    name: messageData.name,
+    email: messageData.email,
+    phone: messageData.phone || null,
+    subject: messageData.subject,
+    message: messageData.message,
+    read: false,
+    responded: false,
+    created_at: new Date().toISOString()
+  };
+
   const { data, error } = await supabase
     .from('contact_messages')
-    .insert([messageData])
+    .insert([finalData])
     .select()
     .single();
 
@@ -385,6 +534,26 @@ export const getContactMessages = async () => {
     .order('created_at', { ascending: false });
 
   return { data, error };
+};
+
+export const updateContactMessage = async (id, updates) => {
+  const { data, error } = await supabase
+    .from('contact_messages')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  return { data, error };
+};
+
+export const deleteContactMessage = async (id) => {
+  const { error } = await supabase
+    .from('contact_messages')
+    .delete()
+    .eq('id', id);
+
+  return { error };
 };
 
 // Analytics
@@ -444,5 +613,40 @@ export const getDashboardStats = async () => {
       pendingAppointments: 0,
       totalTestimonials: 0
     };
+  }
+};
+
+// Helper function to get image URL with fallback
+export const getImageUrl = (imageObj, fallback = "/hero.jpg") => {
+  if (!imageObj) return fallback;
+  
+  // Handle different image object structures
+  if (typeof imageObj === 'string') return imageObj;
+  if (imageObj.url) return imageObj.url;
+  if (imageObj.publicUrl) return imageObj.publicUrl;
+  
+  return fallback;
+};
+
+// Helper function to ensure storage bucket exists and is public
+export const ensureStorageBucket = async () => {
+  try {
+    // Check if bucket exists
+    const { data: buckets } = await supabase.storage.listBuckets();
+    const vehicleImagesBucket = buckets?.find(bucket => bucket.name === 'vehicle-images');
+    
+    if (!vehicleImagesBucket) {
+      // Create bucket if it doesn't exist
+      const { error } = await supabase.storage.createBucket('vehicle-images', {
+        public: true,
+        allowedMimeTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+      });
+      
+      if (error) {
+        console.error('Error creating storage bucket:', error);
+      }
+    }
+  } catch (error) {
+    console.error('Error checking storage bucket:', error);
   }
 };
