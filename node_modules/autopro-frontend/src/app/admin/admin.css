@@ -1,0 +1,151 @@
+/* frontend/src/app/admin/admin.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Override Tailwind defaults to ensure text visibility */
+@layer base {
+  input,
+  textarea,
+  select {
+    @apply text-gray-900 !important;
+  }
+}
+
+/* Fix for input text visibility */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+input[type="tel"],
+input[type="date"],
+input[type="file"],
+textarea,
+select {
+  color: #111827 !important; /* gray-900 */
+  background-color: #ffffff !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af !important; /* gray-400 */
+}
+
+/* Dark mode inputs for login page */
+.bg-gray-700 input,
+.bg-gray-700 textarea,
+.bg-gray-700 select {
+  color: #ffffff !important;
+  background-color: rgb(55 65 81) !important;
+}
+
+.bg-gray-700 input::placeholder,
+.bg-gray-700 textarea::placeholder {
+  color: #d1d5db !important; /* gray-300 */
+}
+
+/* Ensure form labels are visible */
+label {
+  color: #374151 !important; /* gray-700 */
+}
+
+/* Focus styles */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid #3b82f6 !important;
+  outline-offset: 2px !important;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] {
+  color: #3b82f6 !important;
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+
+/* File input styling */
+input[type="file"] {
+  color: #374151 !important;
+  cursor: pointer;
+}
+
+/* Select dropdown styling */
+select {
+  cursor: pointer;
+}
+
+select option {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+}
+
+/* Table text */
+.text-gray-900 {
+  color: #111827 !important;
+}
+
+.text-gray-700 {
+  color: #374151 !important;
+}
+
+.text-gray-500 {
+  color: #6b7280 !important;
+}
+
+.text-gray-400 {
+  color: #9ca3af !important;
+}
+
+/* Headers */
+h1, h2, h3, h4, h5, h6 {
+  color: #111827 !important;
+}
+
+/* Ensure admin panel has proper background */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+/* Button hover states */
+button:not(:disabled):hover {
+  opacity: 0.9;
+}
+
+/* Disabled button states */
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Form container backgrounds */
+.bg-white {
+  background-color: #ffffff !important;
+}
+
+.bg-gray-100 {
+  background-color: #f3f4f6 !important;
+}
+
+/* Border colors */
+.border-gray-300 {
+  border-color: #d1d5db !important;
+}
+
+/* Make sure all text is visible */
+* {
+  color: inherit;
+}
+
+/* Override any conflicting dark mode styles */
+@media (prefers-color-scheme: dark) {
+  input:not(.bg-gray-700 input),
+  textarea:not(.bg-gray-700 textarea),
+  select:not(.bg-gray-700 select) {
+    color: #111827 !important;
+    background-color: #ffffff !important;
+  }
+}

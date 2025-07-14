@@ -3,12 +3,11 @@ import mongoose from 'mongoose';
 
 const vehicleSchema = new mongoose.Schema({
   // Basic Information
-  vin: {
-    type: String,
-    unique: true,
-    sparse: true,
-    uppercase: true,
-    trim: true
+  year: {
+    type: Number,
+    required: true,
+    min: 1900,
+    max: new Date().getFullYear() + 1
   },
   make: {
     type: String,
@@ -20,30 +19,27 @@ const vehicleSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
-  year: {
-    type: Number,
-    required: true,
-    min: 1900,
-    max: new Date().getFullYear() + 1
-  },
   trim: {
     type: String,
     trim: true
   },
+  vin: {
+    type: String,
+    unique: true,
+    sparse: true,
+    uppercase: true,
+    trim: true
+  },
   
-  // Pricing & Status
+  // Pricing
   price: {
     type: Number,
     required: true,
     min: 0
   },
-  originalPrice: {
-    type: Number
-  },
-  status: {
-    type: String,
-    enum: ['available', 'sold', 'pending', 'maintenance', 'reserved'],
-    default: 'available'
+  salePrice: {
+    type: Number,
+    min: 0
   },
   
   // Vehicle Details
@@ -54,124 +50,90 @@ const vehicleSchema = new mongoose.Schema({
   },
   bodyType: {
     type: String,
-    enum: ['Sedan', 'SUV', 'Truck', 'Coupe', 'Convertible', 'Wagon', 'Hatchback', 'Van', 'Crossover'],
+    required: true,
+    enum: ['Sedan', 'SUV', 'Truck', 'Coupe', 'Van', 'Wagon', 'Convertible', 'Hatchback']
+  },
+  exteriorColor: {
+    type: String,
     required: true
+  },
+  interiorColor: {
+    type: String
   },
   fuelType: {
     type: String,
-    enum: ['Gasoline', 'Diesel', 'Hybrid', 'Electric', 'Plug-in Hybrid'],
-    required: true
+    required: true,
+    enum: ['Gasoline', 'Diesel', 'Electric', 'Hybrid', 'Plug-in Hybrid']
   },
   transmission: {
     type: String,
-    enum: ['Manual', 'Automatic', 'CVT'],
-    required: true
+    required: true,
+    enum: ['Automatic', 'Manual', 'CVT']
   },
   drivetrain: {
     type: String,
     enum: ['FWD', 'RWD', 'AWD', '4WD']
   },
   engine: {
-    size: String,
-    cylinders: Number,
-    horsepower: Number,
-    torque: Number
+    type: String,
+    trim: true
   },
   
-  // Exterior & Interior
-  exteriorColor: {
-    type: String,
-    required: true
-  },
-  interiorColor: {
-    type: String,
-    required: true
-  },
-  interiorMaterial: {
-    type: String,
-    enum: ['Cloth', 'Leather', 'Leatherette', 'Vinyl']
-  },
-  
-  // Features & Options
+  // Features
   features: [{
-    category: {
-      type: String,
-      enum: ['Safety', 'Technology', 'Comfort', 'Performance', 'Exterior', 'Interior']
-    },
-    name: String,
-    description: String
+    type: String,
+    trim: true
   }],
   
-  // Condition & History
+  // Images
+  images: [{
+    url: String,
+    alt: String,
+    isPrimary: {
+      type: Boolean,
+      default: false
+    }
+  }],
+  
+  // Financing
+  financingAvailable: {
+    type: Boolean,
+    default: true
+  },
+  monthlyPayment: {
+    type: Number,
+    min: 0
+  },
+  
+  // Inventory Management
+  stockNumber: {
+    type: String,
+    unique: true,
+    required: true
+  },
+  status: {
+    type: String,
+    enum: ['available', 'pending', 'sold', 'hold'],
+    default: 'available'
+  },
   condition: {
     type: String,
-    enum: ['Excellent', 'Good', 'Fair', 'Poor'],
-    required: true
+    enum: ['New', 'Used', 'Certified Pre-Owned'],
+    default: 'Used'
   },
-  accidentHistory: {
-    type: Boolean,
-    default: false
-  },
-  numberOfOwners: {
-    type: Number,
-    min: 1,
-    default: 1
-  },
-  serviceHistory: [{
-    date: Date,
-    mileage: Number,
-    service: String,
-    cost: Number,
-    shop: String
-  }],
   
-  // Media
-  images: [{
-    type: String
-  }],
-  videos: [{
-    type: String
-  }],
-  
-  // Description & Notes
+  // Additional Information
   description: {
     type: String,
     maxlength: 2000
   },
-  keyFeatures: [String],
-  notes: {
-    type: String,
-    maxlength: 1000
+  carfaxAvailable: {
+    type: Boolean,
+    default: false
   },
+  carfaxUrl: String,
   
-  // Purchase Information
-  purchaseDate: Date,
-  purchasePrice: Number,
-  source: {
-    type: String,
-    enum: ['Trade-in', 'Auction', 'Private Party', 'Dealer', 'Lease Return']
-  },
-  
-  // Sale Information
-  soldDate: Date,
-  soldPrice: Number,
-  soldTo: {
-    name: String,
-    email: String,
-    phone: String
-  },
-  
-  // SEO & Marketing
-  slug: {
-    type: String,
-    unique: true,
-    sparse: true
-  },
-  metaTitle: String,
-  metaDescription: String,
-  tags: [String],
-  
-  // Analytics
+  // Metadata
   views: {
     type: Number,
     default: 0
@@ -180,43 +142,37 @@ const vehicleSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  
-  // Admin Fields
   featured: {
     type: Boolean,
     default: false
   },
-  priority: {
-    type: Number,
-    default: 0
-  },
-  isActive: {
-    type: Boolean,
-    default: true
+  
+  // SEO
+  slug: {
+    type: String,
+    unique: true
   }
 }, {
   timestamps: true
 });
 
-// Indexes for better query performance
-vehicleSchema.index({ make: 1, model: 1, year: 1 });
-vehicleSchema.index({ price: 1 });
-vehicleSchema.index({ mileage: 1 });
-vehicleSchema.index({ status: 1 });
-vehicleSchema.index({ bodyType: 1 });
-vehicleSchema.index({ fuelType: 1 });
-vehicleSchema.index({ featured: 1 });
-vehicleSchema.index({ slug: 1 });
-
-// Pre-save middleware to generate slug
+// Generate slug before saving
 vehicleSchema.pre('save', function(next) {
-  if (!this.slug) {
-    this.slug = `${this.year}-${this.make}-${this.model}`
+  if (this.isNew || this.isModified('year') || this.isModified('make') || this.isModified('model')) {
+    this.slug = `${this.year}-${this.make}-${this.model}-${this.stockNumber}`
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
+      .replace(/\s+/g, '-')
+      .replace(/[^\w-]+/g, '');
   }
   next();
 });
 
-export default mongoose.model('Vehicle', vehicleSchema);
+// Index for search
+vehicleSchema.index({ make: 1, model: 1, year: 1 });
+vehicleSchema.index({ price: 1 });
+vehicleSchema.index({ status: 1 });
+vehicleSchema.index({ featured: -1 });
+
+const Vehicle = mongoose.model('Vehicle', vehicleSchema);
+
+export default Vehicle;
