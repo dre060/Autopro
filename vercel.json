@@ -5,9 +5,9 @@
   "framework": "nextjs",
   "regions": ["iad1"],
   "env": {
-    "NEXT_PUBLIC_API_URL": "@api_url",
+    "NEXT_PUBLIC_API_URL": "https://www.autoprorepairs.com/api",
     "NEXT_PUBLIC_SITE_URL": "@site_url",
-    "NEXT_PUBLIC_PHONE": "3523395181",
+    "NEXT_PUBLIC_PHONE": "3529335181",
     "NEXT_PUBLIC_EMAIL": "service@autoprorepairs.com"
   }
 }
