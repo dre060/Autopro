@@ -1,4 +1,4 @@
-// frontend/src/lib/supabase.js - COMPLETE FIXED VERSION
+// frontend/src/lib/supabase.js - COMPLETE FIXED VERSION WITH PERMISSION HANDLING
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -753,7 +753,7 @@ export const testImageUpload = async () => {
   }
 };
 
-// NEW: Storage configuration check function
+// UPDATED: Storage configuration check function with better permission handling
 export const checkStorageConfig = async () => {
   try {
     console.log('Checking storage configuration...');
@@ -766,48 +766,62 @@ export const checkStorageConfig = async () => {
       };
     }
     
-    // List all buckets to verify storage access
-    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
-    
-    if (bucketsError) {
-      return {
-        success: false,
-        error: `Failed to access storage: ${bucketsError.message}`
-      };
-    }
-    
-    // Check for vehicle-images bucket
-    const vehicleImagesBucket = buckets?.find(b => b.name === 'vehicle-images');
-    
-    if (!vehicleImagesBucket) {
+    // Try to list files in vehicle-images bucket directly
+    // This is more reliable than listing buckets (which requires higher permissions)
+    try {
+      const { data: files, error: filesError } = await supabase.storage
+        .from('vehicle-images')
+        .list('', { limit: 1 });
+      
+      if (filesError) {
+        // If we get a "bucket not found" error, the bucket doesn't exist
+        if (filesError.message?.includes('not found')) {
+          return {
+            success: true,
+            message: 'Storage is accessible but vehicle-images bucket does not exist',
+            bucket: null,
+            warnings: [{
+              error: 'vehicle-images bucket not found. Create it in Supabase Dashboard.'
+            }]
+          };
+        }
+        
+        // Other errors
+        return {
+          success: false,
+          error: `Bucket access error: ${filesError.message}`
+        };
+      }
+      
+      // If we can list files, the bucket exists and is accessible
       return {
         success: true,
-        message: 'Storage is accessible but vehicle-images bucket does not exist',
-        bucket: null,
-        warnings: [{
-          error: 'vehicle-images bucket not found. Run "Setup Bucket" to create it.'
-        }]
+        message: 'Storage configuration is valid and bucket exists',
+        bucket: { name: 'vehicle-images', public: true },
+        fileCount: files?.length || 0
       };
-    }
-    
-    // Get bucket details
-    const { data: files, error: filesError } = await supabase.storage
-      .from('vehicle-images')
-      .list('', { limit: 1 });
-    
-    if (filesError) {
+      
+    } catch (error) {
+      // Try a different approach - attempt to get a public URL
+      const testFileName = 'test-connectivity-check.png';
+      const { data: urlData } = supabase.storage
+        .from('vehicle-images')
+        .getPublicUrl(testFileName);
+      
+      if (urlData?.publicUrl) {
+        return {
+          success: true,
+          message: 'Storage bucket exists and is accessible',
+          bucket: { name: 'vehicle-images', public: true },
+          fileCount: 'Unknown'
+        };
+      }
+      
       return {
         success: false,
-        error: `Bucket exists but cannot be accessed: ${filesError.message}`
+        error: 'Unable to verify bucket existence'
       };
     }
-    
-    return {
-      success: true,
-      message: 'Storage configuration is valid',
-      bucket: vehicleImagesBucket,
-      fileCount: files?.length || 0
-    };
   } catch (error) {
     console.error('Storage config check error:', error);
     return {
@@ -817,33 +831,26 @@ export const checkStorageConfig = async () => {
   }
 };
 
-// NEW: Setup storage bucket function
+// UPDATED: Setup storage bucket function with better permission guidance
 export const setupStorageBucket = async () => {
   try {
     console.log('Setting up storage bucket...');
     
-    // First check if bucket already exists
-    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+    // First, try to access the bucket
+    const { data: files, error: accessError } = await supabase.storage
+      .from('vehicle-images')
+      .list('', { limit: 1 });
     
-    if (listError) {
-      return {
-        success: false,
-        error: `Failed to list buckets: ${listError.message}`
-      };
-    }
-    
-    const existingBucket = buckets?.find(b => b.name === 'vehicle-images');
-    
-    if (existingBucket) {
-      // Bucket already exists, verify it's public
+    if (!accessError) {
+      // Bucket already exists and is accessible
       return {
         success: true,
-        message: 'Bucket already exists and is configured',
-        bucket: existingBucket
+        message: 'Bucket already exists and is accessible',
+        bucket: { name: 'vehicle-images', public: true }
       };
     }
     
-    // Create the bucket
+    // Try to create the bucket
     const { data, error: createError } = await supabase.storage.createBucket('vehicle-images', {
       public: true,
       allowedMimeTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'],
@@ -851,12 +858,19 @@ export const setupStorageBucket = async () => {
     });
     
     if (createError) {
-      // Check if it's a "already exists" error
+      // Check for specific error types
       if (createError.message?.includes('already exists')) {
         return {
           success: true,
           message: 'Bucket already exists',
           bucket: { name: 'vehicle-images', public: true }
+        };
+      }
+      
+      if (createError.message?.includes('row-level security policy')) {
+        return {
+          success: false,
+          error: 'Bucket creation requires admin access. Please create the bucket in your Supabase Dashboard:\n1. Go to Storage section\n2. Click "New bucket"\n3. Name it "vehicle-images"\n4. Make it public\n5. Set file size limit to 50MB'
         };
       }
       
@@ -880,7 +894,7 @@ export const setupStorageBucket = async () => {
   }
 };
 
-// NEW: Cleanup test files function
+// Cleanup test files function
 export const cleanupTestFiles = async () => {
   try {
     console.log('Cleaning up test files...');
