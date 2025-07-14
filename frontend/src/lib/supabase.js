@@ -1,4 +1,4 @@
-// frontend/src/lib/supabase.js - FIXED VERSION
+// frontend/src/lib/supabase.js - STORAGE CONFIGURATION FIX
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -8,707 +8,350 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-// Create Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true
-  },
-  global: {
-    headers: {
-      'x-application-name': 'autopro-frontend'
-    }
   }
 });
 
-// Auth helpers
-export const signUp = async (email, password, metadata = {}) => {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: metadata,
-      emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined
+// FIXED: Storage bucket setup and policies
+export const setupStorageBucket = async () => {
+  try {
+    console.log('Setting up storage bucket...');
+    
+    // 1. Check if bucket exists
+    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+    
+    if (listError) {
+      console.error('Error listing buckets:', listError);
+      return { success: false, error: listError };
     }
-  });
-  return { data, error };
+    
+    console.log('Existing buckets:', buckets);
+    
+    const vehicleBucket = buckets?.find(b => b.name === 'vehicle-images');
+    
+    if (!vehicleBucket) {
+      console.log('Creating vehicle-images bucket...');
+      
+      // 2. Create bucket with correct settings
+      const { data: createData, error: createError } = await supabase.storage.createBucket('vehicle-images', {
+        public: true,
+        allowedMimeTypes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
+        fileSizeLimit: 10485760 // 10MB
+      });
+      
+      if (createError) {
+        console.error('Error creating bucket:', createError);
+        return { success: false, error: createError };
+      }
+      
+      console.log('Bucket created successfully:', createData);
+    } else {
+      console.log('Bucket already exists:', vehicleBucket);
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Setup error:', error);
+    return { success: false, error };
+  }
 };
 
-export const signIn = async (email, password) => {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password
-  });
-  return { data, error };
-};
-
-export const signOut = async () => {
-  const { error } = await supabase.auth.signOut();
-  return { error };
-};
-
-export const getUser = async () => {
-  const { data: { user }, error } = await supabase.auth.getUser();
-  return { user, error };
-};
-
-export const getProfile = async (userId) => {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
-  return { data, error };
-};
-
-// FIXED: Image upload helper with better error handling
+// FIXED: Image upload with better error handling and verification
 export const uploadVehicleImages = async (images) => {
-  const imageUrls = [];
-  const uploadPromises = [];
-
-  for (let i = 0; i < images.length; i++) {
-    const image = images[i];
-    const fileExt = image.name.split('.').pop().toLowerCase();
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+  try {
+    console.log('Starting image upload process...');
     
-    console.log(`Uploading image ${i + 1}:`, fileName);
+    // Ensure bucket is set up
+    const setupResult = await setupStorageBucket();
+    if (!setupResult.success) {
+      throw new Error('Failed to setup storage bucket: ' + setupResult.error?.message);
+    }
     
-    const uploadPromise = supabase.storage
-      .from('vehicle-images')
-      .upload(fileName, image, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: image.type
-      })
-      .then(({ data, error }) => {
-        if (error) {
-          console.error(`Upload error for ${fileName}:`, error);
-          throw new Error(`Failed to upload ${image.name}: ${error.message}`);
+    const imageUrls = [];
+    
+    for (let i = 0; i < images.length; i++) {
+      const image = images[i];
+      console.log(`Processing image ${i + 1}:`, {
+        name: image.name,
+        size: image.size,
+        type: image.type
+      });
+      
+      // Validate file
+      if (!image.type.startsWith('image/')) {
+        console.error('Invalid file type:', image.type);
+        continue;
+      }
+      
+      if (image.size > 10485760) { // 10MB
+        console.error('File too large:', image.size);
+        continue;
+      }
+      
+      // Generate unique filename
+      const fileExt = image.name.split('.').pop().toLowerCase();
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2);
+      const fileName = `${timestamp}-${randomStr}.${fileExt}`;
+      
+      console.log(`Uploading as: ${fileName}`);
+      
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('vehicle-images')
+        .upload(fileName, image, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: image.type
+        });
+      
+      if (uploadError) {
+        console.error(`Upload error for ${fileName}:`, uploadError);
+        continue;
+      }
+      
+      console.log('Upload successful:', uploadData);
+      
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('vehicle-images')
+        .getPublicUrl(fileName);
+      
+      console.log('Generated URL:', urlData.publicUrl);
+      
+      // Verify the URL works
+      try {
+        const response = await fetch(urlData.publicUrl, { method: 'HEAD' });
+        if (!response.ok) {
+          console.error('URL verification failed:', response.status, response.statusText);
+          // Try to delete the uploaded file
+          await supabase.storage.from('vehicle-images').remove([fileName]);
+          continue;
         }
-        
-        // Get public URL
+        console.log('URL verified successfully');
+      } catch (verifyError) {
+        console.error('URL verification error:', verifyError);
+        continue;
+      }
+      
+      imageUrls.push({
+        url: urlData.publicUrl,
+        alt: `Vehicle Image ${i + 1}`,
+        isPrimary: i === 0,
+        fileName: fileName
+      });
+    }
+    
+    console.log(`Successfully uploaded ${imageUrls.length} images`);
+    return { data: imageUrls, error: null };
+    
+  } catch (error) {
+    console.error('Error in uploadVehicleImages:', error);
+    return { data: null, error };
+  }
+};
+
+// FIXED: Test function with better debugging
+export const testImageUpload = async () => {
+  try {
+    console.log('=== STARTING IMAGE UPLOAD TEST ===');
+    
+    // 1. Test bucket setup
+    console.log('1. Testing bucket setup...');
+    const setupResult = await setupStorageBucket();
+    console.log('Bucket setup result:', setupResult);
+    
+    // 2. Create test image
+    console.log('2. Creating test image...');
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 200;
+    const ctx = canvas.getContext('2d');
+    
+    // Draw a test pattern
+    ctx.fillStyle = '#ff6b6b';
+    ctx.fillRect(0, 0, 300, 200);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '20px Arial';
+    ctx.fillText('TEST IMAGE', 100, 100);
+    ctx.fillText(new Date().toLocaleTimeString(), 80, 130);
+    
+    return new Promise((resolve) => {
+      canvas.toBlob(async (blob) => {
+        try {
+          const testFile = new File([blob], 'test-image.png', { type: 'image/png' });
+          console.log('Created test file:', {
+            name: testFile.name,
+            size: testFile.size,
+            type: testFile.type
+          });
+          
+          // 3. Test upload
+          console.log('3. Testing upload...');
+          const result = await uploadVehicleImages([testFile]);
+          
+          if (result.error) {
+            console.error('Upload test failed:', result.error);
+            resolve({ success: false, error: result.error });
+            return;
+          }
+          
+          console.log('Upload test successful:', result.data);
+          
+          // 4. Test image loading
+          if (result.data && result.data.length > 0) {
+            const imageUrl = result.data[0].url;
+            console.log('4. Testing image loading...');
+            
+            const img = new Image();
+            img.onload = () => {
+              console.log('✅ Image loaded successfully!');
+              resolve({ 
+                success: true, 
+                imageUrl,
+                message: 'Image upload and loading test successful!'
+              });
+            };
+            img.onerror = (error) => {
+              console.error('❌ Image failed to load:', error);
+              resolve({ 
+                success: false, 
+                error: 'Image uploaded but failed to load',
+                imageUrl
+              });
+            };
+            img.src = imageUrl;
+            
+            // Timeout after 10 seconds
+            setTimeout(() => {
+              resolve({ 
+                success: false, 
+                error: 'Image load timeout',
+                imageUrl
+              });
+            }, 10000);
+          } else {
+            resolve({ success: false, error: 'No images uploaded' });
+          }
+          
+        } catch (error) {
+          console.error('Test error:', error);
+          resolve({ success: false, error: error.message });
+        }
+      }, 'image/png');
+    });
+    
+  } catch (error) {
+    console.error('Test setup error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// FIXED: Check storage configuration
+export const checkStorageConfig = async () => {
+  try {
+    console.log('=== CHECKING STORAGE CONFIGURATION ===');
+    
+    // 1. List buckets
+    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+    if (listError) {
+      console.error('Error listing buckets:', listError);
+      return { success: false, error: listError };
+    }
+    
+    console.log('Available buckets:', buckets);
+    
+    // 2. Check vehicle-images bucket
+    const vehicleBucket = buckets?.find(b => b.name === 'vehicle-images');
+    if (!vehicleBucket) {
+      console.log('❌ vehicle-images bucket not found');
+      return { success: false, error: 'vehicle-images bucket not found' };
+    }
+    
+    console.log('✅ vehicle-images bucket found:', vehicleBucket);
+    
+    // 3. Test bucket access
+    try {
+      const { data: files, error: listFilesError } = await supabase.storage
+        .from('vehicle-images')
+        .list('', { limit: 5 });
+      
+      if (listFilesError) {
+        console.error('Error accessing bucket:', listFilesError);
+        return { success: false, error: listFilesError };
+      }
+      
+      console.log('✅ Bucket accessible, files:', files);
+      
+      // 4. Test a sample file URL if any exist
+      if (files && files.length > 0) {
+        const sampleFile = files[0];
         const { data: urlData } = supabase.storage
           .from('vehicle-images')
-          .getPublicUrl(fileName);
+          .getPublicUrl(sampleFile.name);
         
-        return {
-          url: urlData.publicUrl,
-          alt: `Vehicle Image ${i + 1}`,
-          isPrimary: i === 0,
-          fileName: fileName
-        };
-      });
-    
-    uploadPromises.push(uploadPromise);
-  }
-
-  try {
-    const results = await Promise.all(uploadPromises);
-    return { data: results, error: null };
-  } catch (error) {
-    console.error('Error uploading images:', error);
-    return { data: null, error };
-  }
-};
-
-// FIXED: Vehicle operations with better image handling
-export const getVehicles = async (filters = {}) => {
-  let query = supabase
-    .from('vehicles')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  // Apply filters
-  if (filters.status) {
-    query = query.eq('status', filters.status);
-  }
-  if (filters.featured !== undefined) {
-    query = query.eq('featured', filters.featured);
-  }
-  if (filters.make) {
-    query = query.eq('make', filters.make);
-  }
-  if (filters.model) {
-    query = query.eq('model', filters.model);
-  }
-  if (filters.year) {
-    query = query.eq('year', filters.year);
-  }
-  if (filters.minPrice) {
-    query = query.gte('price', filters.minPrice);
-  }
-  if (filters.maxPrice) {
-    query = query.lte('price', filters.maxPrice);
-  }
-  if (filters.limit) {
-    query = query.limit(filters.limit);
-  }
-
-  const { data, error } = await query;
-  
-  // FIXED: Ensure images are properly formatted
-  if (data) {
-    data.forEach(vehicle => {
-      if (vehicle.images && Array.isArray(vehicle.images)) {
-        // Images are already in correct format
-      } else if (vehicle.images && typeof vehicle.images === 'string') {
-        // Convert string to array if needed
+        console.log('Sample file URL:', urlData.publicUrl);
+        
+        // Test URL accessibility
         try {
-          vehicle.images = JSON.parse(vehicle.images);
-        } catch (e) {
-          vehicle.images = [];
+          const response = await fetch(urlData.publicUrl, { method: 'HEAD' });
+          console.log('URL test response:', response.status, response.statusText);
+          
+          if (response.ok) {
+            console.log('✅ Storage URLs are accessible');
+          } else {
+            console.log('❌ Storage URLs are not accessible');
+            return { 
+              success: false, 
+              error: `URLs not accessible: ${response.status} ${response.statusText}` 
+            };
+          }
+        } catch (fetchError) {
+          console.error('URL fetch error:', fetchError);
+          return { success: false, error: 'URL fetch failed' };
         }
-      } else {
-        vehicle.images = [];
       }
-    });
-  }
-  
-  return { data, error };
-};
-
-export const getVehicleById = async (id) => {
-  const { data, error } = await supabase
-    .from('vehicles')
-    .select('*')
-    .eq('id', id)
-    .single();
-  
-  // FIXED: Ensure images are properly formatted
-  if (data && data.images) {
-    if (typeof data.images === 'string') {
-      try {
-        data.images = JSON.parse(data.images);
-      } catch (e) {
-        data.images = [];
-      }
-    }
-  }
-  
-  // Increment views if found
-  if (data && !error) {
-    await supabase.rpc('increment_vehicle_views', { vehicle_id: id });
-  }
-  
-  return { data, error };
-};
-
-export const createVehicle = async (vehicleData, images = []) => {
-  try {
-    console.log('Creating vehicle with images:', images.length);
-    
-    // Upload images first if provided
-    let imageUrls = [];
-    
-    if (images && images.length > 0) {
-      const uploadResult = await uploadVehicleImages(images);
-      if (uploadResult.error) {
-        throw uploadResult.error;
-      }
-      imageUrls = uploadResult.data;
-    }
-
-    console.log('Uploaded images:', imageUrls);
-
-    // Prepare vehicle data with proper field mapping
-    const finalVehicleData = {
-      year: parseInt(vehicleData.year),
-      make: vehicleData.make,
-      model: vehicleData.model,
-      trim: vehicleData.trim || null,
-      vin: vehicleData.vin || null,
-      price: parseFloat(vehicleData.price),
-      sale_price: vehicleData.sale_price ? parseFloat(vehicleData.sale_price) : null,
-      mileage: parseInt(vehicleData.mileage),
-      body_type: vehicleData.body_type,
-      exterior_color: vehicleData.exterior_color,
-      interior_color: vehicleData.interior_color || null,
-      fuel_type: vehicleData.fuel_type,
-      transmission: vehicleData.transmission,
-      drivetrain: vehicleData.drivetrain || null,
-      engine: vehicleData.engine || null,
-      features: vehicleData.features || [],
-      key_features: vehicleData.key_features || [],
-      financing_available: vehicleData.financing_available || false,
-      monthly_payment: vehicleData.monthly_payment ? parseFloat(vehicleData.monthly_payment) : null,
-      stock_number: vehicleData.stock_number || `AP${Date.now().toString().slice(-6)}`,
-      status: vehicleData.status || 'available',
-      condition: vehicleData.condition || 'Good',
-      description: vehicleData.description || null,
-      carfax_available: vehicleData.carfax_available || false,
-      carfax_url: vehicleData.carfax_url || null,
-      featured: vehicleData.featured || false,
-      accident_history: vehicleData.accident_history || false,
-      number_of_owners: vehicleData.number_of_owners || 1,
-      service_records: vehicleData.service_records || false,
-      images: imageUrls, // Store as JSONB array
-      views: 0,
-      created_at: new Date().toISOString()
-    };
-
-    console.log('Final vehicle data:', finalVehicleData);
-
-    // Insert vehicle into database
-    const { data, error } = await supabase
-      .from('vehicles')
-      .insert([finalVehicleData])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Database insert error:', error);
       
-      // If database insert fails, try to clean up uploaded images
-      if (imageUrls.length > 0) {
-        const filenames = imageUrls.map(img => img.fileName).filter(Boolean);
-        if (filenames.length > 0) {
-          await supabase.storage
-            .from('vehicle-images')
-            .remove(filenames);
-        }
-      }
-      throw error;
-    }
-
-    console.log('Vehicle created successfully:', data);
-    return { data, error: null };
-  } catch (error) {
-    console.error('Error in createVehicle:', error);
-    return { data: null, error };
-  }
-};
-
-export const updateVehicle = async (id, updates, newImages = []) => {
-  try {
-    // Get existing vehicle data
-    const { data: existingVehicle } = await supabase
-      .from('vehicles')
-      .select('images')
-      .eq('id', id)
-      .single();
-    
-    let imageUrls = existingVehicle?.images || [];
-
-    // Handle new image uploads
-    if (newImages && newImages.length > 0) {
-      const uploadResult = await uploadVehicleImages(newImages);
-      if (uploadResult.error) {
-        throw uploadResult.error;
-      }
-      // Add new images to existing ones
-      imageUrls = [...imageUrls, ...uploadResult.data];
-    }
-
-    // Prepare update data with proper type conversion
-    const updateData = {
-      ...updates,
-      images: imageUrls
-    };
-
-    // Convert numeric fields
-    if (updateData.year) updateData.year = parseInt(updateData.year);
-    if (updateData.price) updateData.price = parseFloat(updateData.price);
-    if (updateData.sale_price) updateData.sale_price = parseFloat(updateData.sale_price);
-    if (updateData.mileage) updateData.mileage = parseInt(updateData.mileage);
-    if (updateData.monthly_payment) updateData.monthly_payment = parseFloat(updateData.monthly_payment);
-    if (updateData.number_of_owners) updateData.number_of_owners = parseInt(updateData.number_of_owners);
-
-    const { data, error } = await supabase
-      .from('vehicles')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
-
-    return { data, error };
-  } catch (error) {
-    console.error('Error in updateVehicle:', error);
-    return { data: null, error };
-  }
-};
-
-export const deleteVehicle = async (id) => {
-  try {
-    // Get vehicle to find associated images
-    const { data: vehicle } = await supabase
-      .from('vehicles')
-      .select('images')
-      .eq('id', id)
-      .single();
-    
-    // Delete associated images from storage
-    if (vehicle?.images && Array.isArray(vehicle.images) && vehicle.images.length > 0) {
-      const filenames = vehicle.images
-        .map(img => img.fileName || (img.url ? img.url.split('/').pop() : null))
-        .filter(Boolean);
+      return { success: true, bucket: vehicleBucket, fileCount: files.length };
       
-      if (filenames.length > 0) {
-        const { error: storageError } = await supabase.storage
-          .from('vehicle-images')
-          .remove(filenames);
-        
-        if (storageError) {
-          console.error('Error deleting images from storage:', storageError);
-        }
-      }
+    } catch (accessError) {
+      console.error('Bucket access error:', accessError);
+      return { success: false, error: accessError };
     }
     
-    // Delete vehicle record
-    const { error } = await supabase
-      .from('vehicles')
-      .delete()
-      .eq('id', id);
-
-    return { error };
   } catch (error) {
-    console.error('Error in deleteVehicle:', error);
-    return { error };
+    console.error('Configuration check error:', error);
+    return { success: false, error };
   }
 };
 
-// Appointment operations
-export const getAppointments = async (filters = {}) => {
-  let query = supabase
-    .from('appointments')
-    .select('*')
-    .order('date', { ascending: true })
-    .order('time', { ascending: true });
-
-  if (filters.status) {
-    query = query.eq('status', filters.status);
-  }
-  if (filters.date) {
-    query = query.eq('date', filters.date);
-  }
-  if (filters.technician_id) {
-    query = query.eq('technician_id', filters.technician_id);
-  }
-
-  const { data, error } = await query;
-  return { data, error };
-};
-
-export const createAppointment = async (appointmentData) => {
-  try {
-    // Prepare appointment data with proper field mapping
-    const finalAppointmentData = {
-      name: appointmentData.name,
-      email: appointmentData.email,
-      phone: appointmentData.phone,
-      service: appointmentData.service,
-      date: appointmentData.date,
-      time: appointmentData.time,
-      end_time: appointmentData.end_time || null,
-      message: appointmentData.message || null,
-      vehicle_info: appointmentData.vehicle_info || null,
-      status: appointmentData.status || 'pending',
-      urgency: appointmentData.urgency || 'medium',
-      technician_id: appointmentData.technician_id || null,
-      assigned_technician: appointmentData.assigned_technician || null,
-      bay: appointmentData.bay || null,
-      estimated_cost: appointmentData.estimated_cost || null,
-      actual_cost: appointmentData.actual_cost || null,
-      notes: appointmentData.notes || [],
-      confirmation_sent: appointmentData.confirmation_sent || false,
-      reminder_sent: appointmentData.reminder_sent || false,
-      created_at: new Date().toISOString()
-    };
-
-    const { data, error } = await supabase
-      .from('appointments')
-      .insert([finalAppointmentData])
-      .select()
-      .single();
-
-    return { data, error };
-  } catch (error) {
-    console.error('Error in createAppointment:', error);
-    return { data: null, error };
-  }
-};
-
-export const updateAppointment = async (id, updates) => {
-  try {
-    const { data, error } = await supabase
-      .from('appointments')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
-
-    return { data, error };
-  } catch (error) {
-    console.error('Error in updateAppointment:', error);
-    return { data: null, error };
-  }
-};
-
-export const deleteAppointment = async (id) => {
-  const { error } = await supabase
-    .from('appointments')
-    .delete()
-    .eq('id', id);
-
-  return { error };
-};
-
-// Service operations
-export const getServices = async (active = true) => {
-  let query = supabase
-    .from('services')
-    .select('*')
-    .order('order_index', { ascending: true });
-
-  if (active !== null) {
-    query = query.eq('active', active);
-  }
-
-  const { data, error } = await query;
-  return { data, error };
-};
-
-export const createService = async (serviceData) => {
-  const { data, error } = await supabase
-    .from('services')
-    .insert([serviceData])
-    .select()
-    .single();
-
-  return { data, error };
-};
-
-export const updateService = async (id, updates) => {
-  const { data, error } = await supabase
-    .from('services')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-
-  return { data, error };
-};
-
-export const deleteService = async (id) => {
-  const { error } = await supabase
-    .from('services')
-    .delete()
-    .eq('id', id);
-
-  return { error };
-};
-
-// Testimonial operations
-export const getTestimonials = async (approved = true) => {
-  let query = supabase
-    .from('testimonials')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (approved !== null) {
-    query = query.eq('approved', approved);
-  }
-
-  const { data, error } = await query;
-  return { data, error };
-};
-
-export const createTestimonial = async (testimonialData) => {
-  const finalData = {
-    ...testimonialData,
-    created_at: new Date().toISOString()
-  };
-
-  const { data, error } = await supabase
-    .from('testimonials')
-    .insert([finalData])
-    .select()
-    .single();
-
-  return { data, error };
-};
-
-export const updateTestimonial = async (id, updates) => {
-  const { data, error } = await supabase
-    .from('testimonials')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-
-  return { data, error };
-};
-
-export const deleteTestimonial = async (id) => {
-  const { error } = await supabase
-    .from('testimonials')
-    .delete()
-    .eq('id', id);
-
-  return { error };
-};
-
-// Contact message operations
-export const createContactMessage = async (messageData) => {
-  const finalData = {
-    name: messageData.name,
-    email: messageData.email,
-    phone: messageData.phone || null,
-    subject: messageData.subject,
-    message: messageData.message,
-    read: false,
-    responded: false,
-    created_at: new Date().toISOString()
-  };
-
-  const { data, error } = await supabase
-    .from('contact_messages')
-    .insert([finalData])
-    .select()
-    .single();
-
-  return { data, error };
-};
-
-export const getContactMessages = async () => {
-  const { data, error } = await supabase
-    .from('contact_messages')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  return { data, error };
-};
-
-export const updateContactMessage = async (id, updates) => {
-  const { data, error } = await supabase
-    .from('contact_messages')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-
-  return { data, error };
-};
-
-export const deleteContactMessage = async (id) => {
-  const { error } = await supabase
-    .from('contact_messages')
-    .delete()
-    .eq('id', id);
-
-  return { error };
-};
-
-// Analytics
-export const getDashboardStats = async () => {
-  try {
-    // Get counts using Supabase's count functionality
-    const [vehicles, appointments, testimonials] = await Promise.all([
-      supabase.from('vehicles').select('*', { count: 'exact', head: true }),
-      supabase.from('appointments').select('*', { count: 'exact', head: true }),
-      supabase.from('testimonials').select('*', { count: 'exact', head: true }).eq('approved', true)
-    ]);
-
-    // Get today's appointments
-    const today = new Date().toISOString().split('T')[0];
-    const { count: todayAppointments } = await supabase
-      .from('appointments')
-      .select('*', { count: 'exact', head: true })
-      .eq('date', today);
-
-    // Get pending appointments
-    const { count: pendingAppointments } = await supabase
-      .from('appointments')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending');
-
-    // Get available vehicles
-    const { count: availableVehicles } = await supabase
-      .from('vehicles')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'available');
-
-    return {
-      totalVehicles: vehicles.count || 0,
-      availableVehicles: availableVehicles || 0,
-      totalAppointments: appointments.count || 0,
-      todayAppointments: todayAppointments || 0,
-      pendingAppointments: pendingAppointments || 0,
-      totalTestimonials: testimonials.count || 0
-    };
-  } catch (error) {
-    console.error('Error fetching dashboard stats:', error);
-    return {
-      totalVehicles: 0,
-      availableVehicles: 0,
-      totalAppointments: 0,
-      todayAppointments: 0,
-      pendingAppointments: 0,
-      totalTestimonials: 0
-    };
-  }
-};
-
-// FIXED: Helper function to get image URL with fallback
+// FIXED: Helper to get proper image URL
 export const getImageUrl = (imageObj, fallback = "/hero.jpg") => {
   if (!imageObj) return fallback;
   
-  // Handle different image object structures
-  if (typeof imageObj === 'string') return imageObj;
-  if (imageObj.url) return imageObj.url;
-  if (imageObj.publicUrl) return imageObj.publicUrl;
+  if (typeof imageObj === 'string') {
+    // Validate URL format
+    if (imageObj.includes('supabase.co/storage/v1/object/public/')) {
+      return imageObj;
+    }
+    return fallback;
+  }
+  
+  if (imageObj.url) {
+    if (imageObj.url.includes('supabase.co/storage/v1/object/public/')) {
+      return imageObj.url;
+    }
+  }
+  
+  if (imageObj.publicUrl) {
+    if (imageObj.publicUrl.includes('supabase.co/storage/v1/object/public/')) {
+      return imageObj.publicUrl;
+    }
+  }
   
   return fallback;
-};
-
-// FIXED: Helper function to ensure storage bucket exists and is public
-export const ensureStorageBucket = async () => {
-  try {
-    // Check if bucket exists
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const vehicleImagesBucket = buckets?.find(bucket => bucket.name === 'vehicle-images');
-    
-    if (!vehicleImagesBucket) {
-      console.log('Creating vehicle-images bucket...');
-      // Create bucket if it doesn't exist
-      const { error } = await supabase.storage.createBucket('vehicle-images', {
-        public: true,
-        allowedMimeTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'],
-        fileSizeLimit: 52428800 // 50MB
-      });
-      
-      if (error) {
-        console.error('Error creating storage bucket:', error);
-      } else {
-        console.log('Successfully created vehicle-images bucket');
-      }
-    } else {
-      console.log('vehicle-images bucket already exists');
-    }
-  } catch (error) {
-    console.error('Error checking storage bucket:', error);
-  }
-};
-
-// FIXED: Test image upload function
-export const testImageUpload = async () => {
-  try {
-    console.log('Testing image upload...');
-    
-    // Create a test blob
-    const canvas = document.createElement('canvas');
-    canvas.width = 100;
-    canvas.height = 100;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ff0000';
-    ctx.fillRect(0, 0, 100, 100);
-    
-    canvas.toBlob(async (blob) => {
-      const file = new File([blob], 'test.png', { type: 'image/png' });
-      const result = await uploadVehicleImages([file]);
-      console.log('Test upload result:', result);
-    });
-  } catch (error) {
-    console.error('Test upload error:', error);
-  }
 };
