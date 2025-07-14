@@ -1,4 +1,4 @@
-// frontend/src/app/inventory/page.js
+// frontend/src/app/inventory/page.js - FIXED VERSION
 "use client";
 
 import Image from "next/image";
@@ -28,14 +28,25 @@ export default function Inventory() {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/vehicles?status=available');
+      const response = await fetch('/api/vehicles?status=available', {
+        cache: 'no-store' // Ensure fresh data
+      });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch vehicles');
+        throw new Error(`HTTP ${response.status}: Failed to fetch vehicles`);
       }
       
       const data = await response.json();
-      setVehicles(data.vehicles || []);
+      console.log('Fetched vehicles data:', data); // Debug log
+      
+      // Ensure each vehicle has properly formatted images
+      const processedVehicles = (data.vehicles || []).map(vehicle => ({
+        ...vehicle,
+        images: ensureImageArray(vehicle.images, vehicle)
+      }));
+      
+      console.log('Processed vehicles:', processedVehicles); // Debug log
+      setVehicles(processedVehicles);
     } catch (err) {
       console.error('Error fetching vehicles:', err);
       setError('Unable to load vehicles at this time.');
@@ -43,6 +54,64 @@ export default function Inventory() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper function to ensure consistent image array format
+  const ensureImageArray = (images, vehicle) => {
+    console.log('Processing images for vehicle:', vehicle.id, 'Images:', images); // Debug log
+    
+    if (!images) return [];
+    
+    // If it's already an array
+    if (Array.isArray(images)) {
+      return images.map((img, index) => {
+        if (typeof img === 'string') {
+          return {
+            url: img,
+            alt: `${vehicle.year} ${vehicle.make} ${vehicle.model} - Image ${index + 1}`,
+            isPrimary: index === 0
+          };
+        }
+        return {
+          url: img.url || img.publicUrl || '',
+          alt: img.alt || `${vehicle.year} ${vehicle.make} ${vehicle.model} - Image ${index + 1}`,
+          isPrimary: img.isPrimary || index === 0
+        };
+      }).filter(img => img.url); // Remove images without URLs
+    }
+    
+    // If it's a string (JSON)
+    if (typeof images === 'string') {
+      try {
+        const parsed = JSON.parse(images);
+        return ensureImageArray(parsed, vehicle);
+      } catch (e) {
+        console.warn('Failed to parse images JSON for vehicle:', vehicle.id);
+        return [];
+      }
+    }
+    
+    // If it's a single object
+    if (typeof images === 'object' && images.url) {
+      return [{
+        url: images.url,
+        alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+        isPrimary: true
+      }];
+    }
+    
+    return [];
+  };
+
+  // Helper function to get the primary image URL
+  const getPrimaryImageUrl = (vehicle) => {
+    if (!vehicle.images || vehicle.images.length === 0) {
+      return "/hero.jpg";
+    }
+    
+    // Find primary image or use first image
+    const primaryImage = vehicle.images.find(img => img.isPrimary) || vehicle.images[0];
+    return primaryImage?.url || "/hero.jpg";
   };
 
   const handleFilterChange = (e) => {
@@ -68,16 +137,16 @@ export default function Inventory() {
     return (
       (!filters.make || vehicle.make === filters.make) &&
       (!filters.year || vehicle.year.toString() === filters.year) &&
-      (!filters.bodyType || vehicle.bodyType === filters.bodyType) &&
+      (!filters.bodyType || vehicle.body_type === filters.bodyType) &&
       (!filters.minPrice || vehicle.price >= parseInt(filters.minPrice)) &&
       (!filters.maxPrice || vehicle.price <= parseInt(filters.maxPrice))
     );
   });
 
   // Get unique values for filter options
-  const uniqueMakes = [...new Set(vehicles.map(v => v.make))].sort();
-  const uniqueYears = [...new Set(vehicles.map(v => v.year))].sort((a, b) => b - a);
-  const uniqueBodyTypes = [...new Set(vehicles.map(v => v.bodyType))].sort();
+  const uniqueMakes = [...new Set(vehicles.map(v => v.make))].filter(Boolean).sort();
+  const uniqueYears = [...new Set(vehicles.map(v => v.year))].filter(Boolean).sort((a, b) => b - a);
+  const uniqueBodyTypes = [...new Set(vehicles.map(v => v.body_type))].filter(Boolean).sort();
 
   return (
     <>
@@ -223,10 +292,10 @@ export default function Inventory() {
                     </p>
                     <div className="flex flex-col sm:flex-row gap-4 justify-center">
                       <a
-                        href="tel:3523395181"
+                        href="tel:3529335181"
                         className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded font-semibold transition-colors"
                       >
-                        Call Us: (352) 339-5181
+                        Call Us: (352) 933-5181
                       </a>
                       <Link
                         href="/contact"
@@ -254,88 +323,102 @@ export default function Inventory() {
           ) : (
             <>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {filteredVehicles.map((vehicle, index) => (
-                  <div
-                    key={vehicle._id || vehicle.id}
-                    className="bg-gray-900 rounded-lg overflow-hidden hover:shadow-2xl transition-all duration-300 hover:transform hover:scale-105 group animate-fadeInUp"
-                    style={{ animationDelay: `${index * 100}ms` }}
-                  >
-                    <div className="relative h-56 overflow-hidden">
-                      <Image
-                        src={vehicle.images?.[0]?.url || "/hero.jpg"}
-                        alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
-                        fill
-                        className="object-cover group-hover:scale-110 transition-transform duration-300"
-                      />
-                      <div className="absolute top-4 right-4 bg-blue-600 text-white px-3 py-1 rounded font-bold">
-                        ${vehicle.price.toLocaleString()}
+                {filteredVehicles.map((vehicle, index) => {
+                  const primaryImageUrl = getPrimaryImageUrl(vehicle);
+                  
+                  return (
+                    <div
+                      key={vehicle.id}
+                      className="bg-gray-900 rounded-lg overflow-hidden hover:shadow-2xl transition-all duration-300 hover:transform hover:scale-105 group animate-fadeInUp"
+                      style={{ animationDelay: `${index * 100}ms` }}
+                    >
+                      <div className="relative h-56 overflow-hidden">
+                        <Image
+                          src={primaryImageUrl}
+                          alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+                          fill
+                          className="object-cover group-hover:scale-110 transition-transform duration-300"
+                          onError={(e) => {
+                            console.error('Image load error for vehicle:', vehicle.id, 'URL:', primaryImageUrl);
+                            e.target.src = '/hero.jpg';
+                          }}
+                        />
+                        <div className="absolute top-4 right-4 bg-blue-600 text-white px-3 py-1 rounded font-bold">
+                          ${vehicle.price?.toLocaleString() || 'N/A'}
+                        </div>
+                        {vehicle.sale_price && (
+                          <div className="absolute top-4 left-4 bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">
+                            SALE
+                          </div>
+                        )}
+                        {vehicle.featured && (
+                          <div className="absolute bottom-4 left-4 bg-yellow-400 text-black px-2 py-1 rounded text-xs font-bold">
+                            FEATURED
+                          </div>
+                        )}
+                        {/* Debug info - remove in production */}
+                        {process.env.NODE_ENV === 'development' && (
+                          <div className="absolute bottom-4 right-4 bg-black bg-opacity-75 text-white text-xs p-1 rounded">
+                            Images: {vehicle.images?.length || 0}
+                          </div>
+                        )}
                       </div>
-                      {vehicle.salePrice && (
-                        <div className="absolute top-4 left-4 bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">
-                          SALE
-                        </div>
-                      )}
-                      {vehicle.featured && (
-                        <div className="absolute bottom-4 left-4 bg-yellow-400 text-black px-2 py-1 rounded text-xs font-bold">
-                          FEATURED
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="p-6">
-                      <h3 className="text-xl font-bold mb-2 group-hover:text-blue-400 transition-colors">
-                        {vehicle.year} {vehicle.make} {vehicle.model}
-                      </h3>
-                      {vehicle.trim && (
-                        <p className="text-sm text-gray-400 mb-2">{vehicle.trim}</p>
-                      )}
                       
-                      <div className="grid grid-cols-2 gap-2 text-sm text-gray-400 mb-4">
-                        <div>
-                          <span className="text-gray-500">Mileage:</span> {vehicle.mileage.toLocaleString()} mi
+                      <div className="p-6">
+                        <h3 className="text-xl font-bold mb-2 group-hover:text-blue-400 transition-colors">
+                          {vehicle.year} {vehicle.make} {vehicle.model}
+                        </h3>
+                        {vehicle.trim && (
+                          <p className="text-sm text-gray-400 mb-2">{vehicle.trim}</p>
+                        )}
+                        
+                        <div className="grid grid-cols-2 gap-2 text-sm text-gray-400 mb-4">
+                          <div>
+                            <span className="text-gray-500">Mileage:</span> {vehicle.mileage?.toLocaleString() || 'N/A'} mi
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Type:</span> {vehicle.body_type || 'N/A'}
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Fuel:</span> {vehicle.fuel_type || 'N/A'}
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Trans:</span> {vehicle.transmission || 'N/A'}
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-gray-500">Type:</span> {vehicle.bodyType}
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Fuel:</span> {vehicle.fuelType}
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Trans:</span> {vehicle.transmission}
-                        </div>
-                      </div>
 
-                      {/* Financing Badge and Monthly Payment */}
-                      {vehicle.financingAvailable && (
-                        <div className="mb-4 space-y-2">
-                          <span className="bg-green-600 text-white text-xs px-2 py-1 rounded inline-block">
-                            ✓ Financing Available
-                          </span>
-                          {vehicle.monthlyPayment && (
-                            <p className="text-sm text-gray-300">
-                              As low as <span className="font-bold text-green-400">${vehicle.monthlyPayment}/mo</span>*
-                            </p>
-                          )}
+                        {/* Financing Badge and Monthly Payment */}
+                        {vehicle.financing_available && (
+                          <div className="mb-4 space-y-2">
+                            <span className="bg-green-600 text-white text-xs px-2 py-1 rounded inline-block">
+                              ✓ Financing Available
+                            </span>
+                            {vehicle.monthly_payment && (
+                              <p className="text-sm text-gray-300">
+                                As low as <span className="font-bold text-green-400">${vehicle.monthly_payment}/mo</span>*
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        
+                        <div className="flex gap-2">
+                          <Link
+                            href={`/inventory/${vehicle.id}`}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-center py-2 rounded font-semibold transition-colors"
+                          >
+                            View Details
+                          </Link>
+                          <a
+                            href="tel:3529335181"
+                            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-center py-2 rounded font-semibold transition-colors"
+                          >
+                            Call
+                          </a>
                         </div>
-                      )}
-                      
-                      <div className="flex gap-2">
-                        <Link
-                          href={`/inventory/${vehicle._id || vehicle.id}`}
-                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-center py-2 rounded font-semibold transition-colors"
-                        >
-                          View Details
-                        </Link>
-                        <a
-                          href="tel:3523395181"
-                          className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-center py-2 rounded font-semibold transition-colors"
-                        >
-                          Call
-                        </a>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <p className="text-center text-gray-500 text-sm mt-12">
@@ -393,10 +476,10 @@ export default function Inventory() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a 
-              href="tel:3523395181"
+              href="tel:3529335181"
               className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded font-semibold transition-colors inline-block"
             >
-              Call Us: (352) 339-5181
+              Call Us: (352) 933-5181
             </a>
             <Link 
               href="/contact"
