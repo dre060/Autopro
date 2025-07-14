@@ -1,4 +1,4 @@
-// frontend/src/lib/supabase.js - FIXED VERSION
+// frontend/src/lib/supabase.js - COMPLETE FIXED VERSION
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -703,12 +703,242 @@ export const testImageUpload = async () => {
     ctx.fillStyle = '#ff0000';
     ctx.fillRect(0, 0, 100, 100);
     
-    canvas.toBlob(async (blob) => {
-      const file = new File([blob], 'test.png', { type: 'image/png' });
-      const result = await uploadVehicleImages([file]);
-      console.log('Test upload result:', result);
+    return new Promise((resolve) => {
+      canvas.toBlob(async (blob) => {
+        const file = new File([blob], 'test-image.png', { type: 'image/png' });
+        const fileName = `test-${Date.now()}.png`;
+        
+        try {
+          // Upload to Supabase
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('vehicle-images')
+            .upload(fileName, file, {
+              cacheControl: '3600',
+              upsert: false
+            });
+          
+          if (uploadError) {
+            resolve({
+              success: false,
+              error: uploadError.message
+            });
+            return;
+          }
+          
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from('vehicle-images')
+            .getPublicUrl(fileName);
+          
+          resolve({
+            success: true,
+            message: 'Test image uploaded successfully',
+            url: urlData.publicUrl,
+            fileName: fileName
+          });
+        } catch (error) {
+          resolve({
+            success: false,
+            error: error.message
+          });
+        }
+      });
     });
   } catch (error) {
     console.error('Test upload error:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// NEW: Storage configuration check function
+export const checkStorageConfig = async () => {
+  try {
+    console.log('Checking storage configuration...');
+    
+    // Check if Supabase is properly configured
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return {
+        success: false,
+        error: 'Supabase environment variables are not configured'
+      };
+    }
+    
+    // List all buckets to verify storage access
+    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+    
+    if (bucketsError) {
+      return {
+        success: false,
+        error: `Failed to access storage: ${bucketsError.message}`
+      };
+    }
+    
+    // Check for vehicle-images bucket
+    const vehicleImagesBucket = buckets?.find(b => b.name === 'vehicle-images');
+    
+    if (!vehicleImagesBucket) {
+      return {
+        success: true,
+        message: 'Storage is accessible but vehicle-images bucket does not exist',
+        bucket: null,
+        warnings: [{
+          error: 'vehicle-images bucket not found. Run "Setup Bucket" to create it.'
+        }]
+      };
+    }
+    
+    // Get bucket details
+    const { data: files, error: filesError } = await supabase.storage
+      .from('vehicle-images')
+      .list('', { limit: 1 });
+    
+    if (filesError) {
+      return {
+        success: false,
+        error: `Bucket exists but cannot be accessed: ${filesError.message}`
+      };
+    }
+    
+    return {
+      success: true,
+      message: 'Storage configuration is valid',
+      bucket: vehicleImagesBucket,
+      fileCount: files?.length || 0
+    };
+  } catch (error) {
+    console.error('Storage config check error:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown error occurred'
+    };
+  }
+};
+
+// NEW: Setup storage bucket function
+export const setupStorageBucket = async () => {
+  try {
+    console.log('Setting up storage bucket...');
+    
+    // First check if bucket already exists
+    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+    
+    if (listError) {
+      return {
+        success: false,
+        error: `Failed to list buckets: ${listError.message}`
+      };
+    }
+    
+    const existingBucket = buckets?.find(b => b.name === 'vehicle-images');
+    
+    if (existingBucket) {
+      // Bucket already exists, verify it's public
+      return {
+        success: true,
+        message: 'Bucket already exists and is configured',
+        bucket: existingBucket
+      };
+    }
+    
+    // Create the bucket
+    const { data, error: createError } = await supabase.storage.createBucket('vehicle-images', {
+      public: true,
+      allowedMimeTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'],
+      fileSizeLimit: 52428800 // 50MB
+    });
+    
+    if (createError) {
+      // Check if it's a "already exists" error
+      if (createError.message?.includes('already exists')) {
+        return {
+          success: true,
+          message: 'Bucket already exists',
+          bucket: { name: 'vehicle-images', public: true }
+        };
+      }
+      
+      return {
+        success: false,
+        error: `Failed to create bucket: ${createError.message}`
+      };
+    }
+    
+    return {
+      success: true,
+      message: 'Successfully created vehicle-images bucket',
+      bucket: { name: 'vehicle-images', public: true }
+    };
+  } catch (error) {
+    console.error('Setup bucket error:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown error occurred'
+    };
+  }
+};
+
+// NEW: Cleanup test files function
+export const cleanupTestFiles = async () => {
+  try {
+    console.log('Cleaning up test files...');
+    
+    // List all files in the bucket
+    const { data: files, error: listError } = await supabase.storage
+      .from('vehicle-images')
+      .list('', { limit: 1000 });
+    
+    if (listError) {
+      return {
+        success: false,
+        error: `Failed to list files: ${listError.message}`
+      };
+    }
+    
+    if (!files || files.length === 0) {
+      return {
+        success: true,
+        message: 'No files to clean up'
+      };
+    }
+    
+    // Filter for test files (files that start with 'test-' or 'direct-test-')
+    const testFiles = files.filter(file => 
+      file.name.startsWith('test-') || 
+      file.name.startsWith('direct-test-')
+    );
+    
+    if (testFiles.length === 0) {
+      return {
+        success: true,
+        message: 'No test files found to clean up'
+      };
+    }
+    
+    // Delete test files
+    const filenames = testFiles.map(f => f.name);
+    const { error: deleteError } = await supabase.storage
+      .from('vehicle-images')
+      .remove(filenames);
+    
+    if (deleteError) {
+      return {
+        success: false,
+        error: `Failed to delete files: ${deleteError.message}`
+      };
+    }
+    
+    return {
+      success: true,
+      message: `Successfully deleted ${testFiles.length} test files`
+    };
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    return {
+      success: false,
+      error: error.message || 'Unknown error occurred'
+    };
   }
 };
