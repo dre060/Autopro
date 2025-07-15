@@ -1,4 +1,4 @@
-// frontend/src/app/api/vehicles/route.js - FIXED WITH SIMPLIFIED IMAGE HANDLING
+// frontend/src/app/api/vehicles/route.js - FIXED IMAGE URL HANDLING
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
@@ -67,7 +67,7 @@ export async function GET(request) {
       );
     }
 
-    // SIMPLIFIED: Process images for each vehicle
+    // FIXED: Process images properly for each vehicle
     const processedVehicles = (data || []).map(vehicle => {
       // Ensure images is always an array
       if (!vehicle.images) {
@@ -81,25 +81,35 @@ export async function GET(request) {
         }
       }
       
-      // Ensure images is array and process each image
+      // Process each image with proper URL cleaning
       if (Array.isArray(vehicle.images)) {
         vehicle.images = vehicle.images.map((img, index) => {
           if (typeof img === 'string') {
             return {
-              url: img,
+              url: cleanImageUrl(img) || '/hero.jpg',
               alt: `${vehicle.year} ${vehicle.make} ${vehicle.model} - Image ${index + 1}`,
               isPrimary: index === 0
             };
           }
           return {
-            url: img.url || img.publicUrl || '',
+            url: cleanImageUrl(img.url || img.publicUrl) || '/hero.jpg',
             alt: img.alt || `${vehicle.year} ${vehicle.make} ${vehicle.model} - Image ${index + 1}`,
             isPrimary: img.isPrimary || index === 0,
             fileName: img.fileName
           };
-        }).filter(img => img.url); // Remove images without URLs
+        }).filter(img => img.url !== '/hero.jpg' || img.url === '/hero.jpg'); // Keep all images including fallbacks
       } else {
         vehicle.images = [];
+      }
+      
+      // Ensure at least one image (fallback)
+      if (vehicle.images.length === 0) {
+        vehicle.images = [{
+          url: '/hero.jpg',
+          alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+          isPrimary: true,
+          isFallback: true
+        }];
       }
       
       return vehicle;
@@ -116,6 +126,47 @@ export async function GET(request) {
       { status: 500 }
     );
   }
+}
+
+// FIXED: Image URL cleaning function
+function cleanImageUrl(url) {
+  if (!url || typeof url !== 'string') {
+    return null;
+  }
+  
+  url = url.trim();
+  
+  if (!url || url === '') {
+    return null;
+  }
+  
+  // Basic URL validation
+  const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+  const hasValidExtension = validExtensions.some(ext => 
+    url.toLowerCase().includes(ext)
+  );
+  
+  const isSupabaseUrl = url.includes('supabase.co/storage');
+  const isValidStructure = url.startsWith('http://') || 
+                          url.startsWith('https://') || 
+                          url.startsWith('/');
+  
+  if (!(hasValidExtension || isSupabaseUrl) || !isValidStructure) {
+    return null;
+  }
+  
+  // Fix the double slash issue specifically for Supabase URLs
+  if (url.includes('supabase.co/storage')) {
+    // Replace multiple slashes but preserve the protocol slashes
+    url = url.replace(/([^:])\/\/+/g, '$1/');
+    
+    // Ensure HTTPS for Supabase URLs
+    if (url.startsWith('http://') && url.includes('supabase.co')) {
+      url = url.replace('http://', 'https://');
+    }
+  }
+  
+  return url;
 }
 
 export async function POST(request) {
@@ -174,19 +225,26 @@ export async function POST(request) {
           continue;
         }
         
-        // Get public URL
+        // FIXED: Get public URL and clean it properly
         const { data: { publicUrl } } = supabase.storage
           .from('vehicle-images')
-          .getPublicUrl(fileName);
+          .getPublicUrl(uploadData.path);
         
-        imageUrls.push({
-          url: publicUrl,
-          alt: `${vehicleData.make} ${vehicleData.model} - Image ${i + 1}`,
-          isPrimary: i === 0,
-          fileName: fileName
-        });
+        const cleanedUrl = cleanImageUrl(publicUrl);
         
-        console.log('✅ Image uploaded successfully:', fileName);
+        if (cleanedUrl) {
+          imageUrls.push({
+            url: cleanedUrl,
+            alt: `${vehicleData.make} ${vehicleData.model} - Image ${i + 1}`,
+            isPrimary: i === 0,
+            fileName: uploadData.path
+          });
+          
+          console.log('✅ Image uploaded successfully:', fileName, '-> URL:', cleanedUrl);
+        } else {
+          console.error('❌ Failed to clean URL:', publicUrl);
+        }
+        
       } catch (error) {
         console.error(`Error uploading image ${i + 1}:`, error);
       }
