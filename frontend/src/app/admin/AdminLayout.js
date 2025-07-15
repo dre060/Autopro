@@ -151,6 +151,12 @@ export default function AdminLayout({ children }) {
       icon: "📊",
       href: "/admin/storage-diagnostic",
       active: pathname.startsWith("/admin/storage-diagnostic")
+    },
+    {
+      title: "Fix Vehicle Data",
+      icon: "🔧",
+      href: "/admin/fix-vehicle-data",
+      active: pathname.startsWith("/admin/fix-vehicle-data")
     }
   ];
 
@@ -290,11 +296,11 @@ export default function AdminLayout({ children }) {
               
               {/* Debug Quick Access */}
               <Link
-                href="/admin/debug-vehicle-images"
+                href="/admin/fix-vehicle-data"
                 className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                title="Debug Vehicle Images"
+                title="Fix Vehicle Images"
               >
-                🔍 Debug
+                🔧 Fix Images
               </Link>
               
               {/* Notifications */}
