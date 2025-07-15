@@ -10,7 +10,10 @@ import {
   checkStorageConfig,
   setupStorageBucket,
   testImageUpload,
-  cleanupTestFiles
+  cleanupTestFiles,
+  aggressiveRepairVehicle,
+  fixToyotaCamryNow,
+  cleanSlateRepair
 } from "@/lib/supabase";
 
 export default function StorageDiagnostic() {
@@ -185,38 +188,92 @@ export default function StorageDiagnostic() {
     }
   };
 
-  // FIXED: Repair specific Toyota Camry
-  const repairToyotaCamry = async () => {
-    const camryId = '411138ea-874b-42f5-a234-7c8df83d3af3';
-    const camry = vehicles.find(v => v.id === camryId);
+  // FIXED: Emergency Toyota Camry repair
+  const emergencyRepairCamry = async () => {
+    setFixing(true);
+    addLog('🚨 EMERGENCY: Starting Toyota Camry aggressive repair...', 'warning');
     
-    if (!camry) {
-      addLog('❌ Toyota Camry not found in database', 'error');
-      alert('❌ Toyota Camry not found in database');
+    try {
+      const result = await fixToyotaCamryNow();
+      
+      if (result.success) {
+        addLog(`✅ EMERGENCY SUCCESS: ${result.message}`, 'success');
+        addLog(`🔗 New image URL: ${result.newImageUrl}`, 'info');
+        
+        // Force page reload to clear any caches
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+        
+        alert(`🎉 EMERGENCY REPAIR SUCCESSFUL!\n\n${result.message}\n\nPage will reload in 2 seconds to clear caches.`);
+      } else {
+        addLog(`❌ Emergency repair failed: ${result.error}`, 'error');
+        alert(`❌ Emergency repair failed: ${result.error}`);
+      }
+    } catch (error) {
+      addLog(`❌ Emergency repair error: ${error.message}`, 'error');
+      alert(`❌ Emergency repair error: ${error.message}`);
+    } finally {
+      setFixing(false);
+    }
+  };
+
+  // FIXED: Clean slate repair all vehicles
+  const runCleanSlateRepair = async () => {
+    if (!confirm('🚨 WARNING: This will completely recreate images for ALL vehicles with corrupted data. This may take several minutes. Continue?')) {
       return;
     }
     
-    addLog(`🚗 Starting targeted repair for Toyota Camry (ID: ${camryId})...`, 'info');
-    
     setFixing(true);
+    setFixResults([]);
+    addLog('🧹 Starting clean slate repair for all vehicles...', 'warning');
     
     try {
-      const result = await repairVehicleImages(camryId);
+      const result = await cleanSlateRepair();
       
       if (result.success) {
-        addLog(`✅ Toyota Camry repair successful: ${result.message}`, 'success');
+        addLog(`✅ Clean slate repair completed: ${result.message}`, 'success');
+        setFixResults(result.results || []);
         
         // Reload data
         await loadDiagnosticData();
         
-        alert(`✅ Toyota Camry repair successful!\n\nNew image URL: ${result.newImageUrl}`);
+        alert(`✅ ${result.message}\n\nCheck the repair results below for details.`);
       } else {
-        addLog(`❌ Toyota Camry repair failed: ${result.error}`, 'error');
-        alert(`❌ Toyota Camry repair failed: ${result.error}`);
+        addLog(`❌ Clean slate repair failed: ${result.error}`, 'error');
+        alert(`❌ Clean slate repair failed: ${result.error}`);
       }
     } catch (error) {
-      addLog(`❌ Toyota Camry repair error: ${error.message}`, 'error');
-      alert(`❌ Toyota Camry repair error: ${error.message}`);
+      addLog(`❌ Clean slate repair error: ${error.message}`, 'error');
+      alert(`❌ Clean slate repair error: ${error.message}`);
+    } finally {
+      setFixing(false);
+    }
+  };
+
+  // FIXED: Aggressive repair for specific vehicle
+  const aggressiveRepairSpecific = async (vehicle) => {
+    setFixing(true);
+    addLog(`🔥 Starting aggressive repair for ${vehicle.year} ${vehicle.make} ${vehicle.model}...`, 'warning');
+    
+    try {
+      const result = await aggressiveRepairVehicle(vehicle.id);
+      
+      if (result.success) {
+        addLog(`✅ Aggressive repair successful: ${result.message}`, 'success');
+        addLog(`🔗 New image URL: ${result.newImageUrl}`, 'info');
+        
+        // Reload data to show changes
+        await loadDiagnosticData();
+        
+        alert(`✅ ${result.message}\n\nNew image URL: ${result.newImageUrl}`);
+      } else {
+        addLog(`❌ Aggressive repair failed: ${result.error}`, 'error');
+        alert(`❌ Aggressive repair failed: ${result.error}`);
+      }
+    } catch (error) {
+      addLog(`❌ Aggressive repair error: ${error.message}`, 'error');
+      alert(`❌ Aggressive repair error: ${error.message}`);
     } finally {
       setFixing(false);
     }
@@ -367,79 +424,102 @@ export default function StorageDiagnostic() {
         {/* Control Panel */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <span className="text-blue-600">🎮</span> Repair & Test Controls
+            <span className="text-blue-600">🎮</span> Emergency Repair & Test Controls
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <button
-              onClick={loadDiagnosticData}
-              disabled={fixing}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
-            >
-              🔄 Refresh Data
-            </button>
-            
-            <button
-              onClick={repairToyotaCamry}
-              disabled={fixing}
-              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
-            >
-              🚗 Fix Toyota Camry
-            </button>
-            
-            <button
-              onClick={repairAllCorruptedImages}
-              disabled={fixing}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
-            >
-              🔧 Repair All Broken
-            </button>
-            
-            <button
-              onClick={testCleanup}
-              disabled={fixing}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
-            >
-              🧹 Clean Test Files
-            </button>
+          
+          {/* EMERGENCY REPAIR BUTTONS */}
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+            <h3 className="text-red-800 font-bold mb-2">🚨 EMERGENCY REPAIRS</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <button
+                onClick={emergencyRepairCamry}
+                disabled={fixing}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm font-semibold"
+              >
+                🚗 EMERGENCY: Fix Toyota Camry
+              </button>
+              
+              <button
+                onClick={runCleanSlateRepair}
+                disabled={fixing}
+                className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm font-semibold"
+              >
+                🧹 NUCLEAR: Clean Slate All
+              </button>
+              
+              <button
+                onClick={loadDiagnosticData}
+                disabled={fixing}
+                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
+              >
+                🔄 Force Refresh
+              </button>
+            </div>
           </div>
           
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-            <button
-              onClick={testStorageConfig}
-              disabled={fixing}
-              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
-            >
-              🔍 Check Config
-            </button>
-            
-            <button
-              onClick={testBucketSetup}
-              disabled={fixing}
-              className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
-            >
-              🛠️ Setup Bucket
-            </button>
-            
-            <button
-              onClick={testImageUploadFunc}
-              disabled={fixing}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
-            >
-              📤 Test Upload
-            </button>
-            
-            <button
-              onClick={clearLogs}
-              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm"
-            >
-              🗑️ Clear Logs
-            </button>
+          {/* REGULAR REPAIR BUTTONS */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <h3 className="text-blue-800 font-bold mb-2">🔧 Regular Repairs</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <button
+                onClick={repairAllCorruptedImages}
+                disabled={fixing}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
+              >
+                🔧 Repair All Broken
+              </button>
+              
+              <button
+                onClick={testCleanup}
+                disabled={fixing}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
+              >
+                🧹 Clean Test Files
+              </button>
+            </div>
+          </div>
+          
+          {/* DIAGNOSTIC BUTTONS */}
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <h3 className="text-gray-800 font-bold mb-2">🔍 Diagnostics</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <button
+                onClick={testStorageConfig}
+                disabled={fixing}
+                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
+              >
+                🔍 Check Config
+              </button>
+              
+              <button
+                onClick={testBucketSetup}
+                disabled={fixing}
+                className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
+              >
+                🛠️ Setup Bucket
+              </button>
+              
+              <button
+                onClick={testImageUploadFunc}
+                disabled={fixing}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
+              >
+                📤 Test Upload
+              </button>
+              
+              <button
+                onClick={clearLogs}
+                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm"
+              >
+                🗑️ Clear Logs
+              </button>
+            </div>
           </div>
           
           {fixing && (
-            <div className="mt-4 flex items-center gap-2 text-blue-600">
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
-              <span>Processing repair operations...</span>
+            <div className="mt-4 flex items-center gap-2 text-red-600">
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-red-600 border-t-transparent"></div>
+              <span className="font-semibold">EMERGENCY REPAIR IN PROGRESS...</span>
             </div>
           )}
         </div>

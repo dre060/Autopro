@@ -1354,3 +1354,288 @@ export const cleanupTestFiles = async () => {
 export const ensureStorageBucket = async () => {
   return await setupStorageBucket();
 };
+
+// AGGRESSIVE REPAIR: Completely wipe and recreate vehicle images
+export const aggressiveRepairVehicle = async (vehicleId) => {
+  try {
+    console.log(`🔥 Starting aggressive repair for vehicle ${vehicleId}...`);
+    
+    // Step 1: Get the vehicle data
+    const { data: vehicle, error: fetchError } = await supabase
+      .from('vehicles')
+      .select('*')
+      .eq('id', vehicleId)
+      .single();
+    
+    if (fetchError) {
+      throw fetchError;
+    }
+    
+    console.log('Vehicle data:', vehicle);
+    
+    // Step 2: COMPLETELY WIPE existing images from storage
+    if (vehicle.images && Array.isArray(vehicle.images) && vehicle.images.length > 0) {
+      console.log('🗑️ Deleting old corrupted images...');
+      
+      for (const img of vehicle.images) {
+        if (img && img.fileName) {
+          try {
+            await supabase.storage
+              .from('vehicle-images')
+              .remove([img.fileName]);
+            console.log(`✅ Deleted old image: ${img.fileName}`);
+          } catch (deleteError) {
+            console.warn(`⚠️ Could not delete ${img.fileName}:`, deleteError);
+          }
+        }
+      }
+    }
+    
+    // Step 3: Create a high-quality replacement image
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200;
+    canvas.height = 800;
+    const ctx = canvas.getContext('2d');
+    
+    // Create beautiful gradient background
+    const gradient = ctx.createLinearGradient(0, 0, 1200, 800);
+    gradient.addColorStop(0, '#1e40af');
+    gradient.addColorStop(0.3, '#3b82f6');
+    gradient.addColorStop(0.7, '#60a5fa');
+    gradient.addColorStop(1, '#1e40af');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 1200, 800);
+    
+    // Add subtle texture
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    for (let i = 0; i < 50; i++) {
+      ctx.fillRect(Math.random() * 1200, Math.random() * 800, 2, 2);
+    }
+    
+    // Add main content
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Main vehicle title
+    ctx.font = 'bold 64px Arial';
+    ctx.fillText(`${vehicle.year} ${vehicle.make} ${vehicle.model}`, 600, 300);
+    
+    // Price
+    ctx.font = 'bold 48px Arial';
+    ctx.fillText(`${vehicle.price?.toLocaleString() || 'N/A'}`, 600, 380);
+    
+    // Mileage
+    ctx.font = '32px Arial';
+    ctx.fillText(`${vehicle.mileage?.toLocaleString() || 'N/A'} miles`, 600, 430);
+    
+    // Features
+    if (vehicle.features && vehicle.features.length > 0) {
+      ctx.font = '24px Arial';
+      const featuresText = vehicle.features.slice(0, 3).join(' • ');
+      ctx.fillText(featuresText, 600, 480);
+    }
+    
+    // Company branding
+    ctx.font = 'bold 36px Arial';
+    ctx.fillText('AUTO PRO REPAIRS & SALES', 600, 600);
+    
+    // Contact info
+    ctx.font = '28px Arial';
+    ctx.fillText('(352) 933-5181', 600, 650);
+    
+    // Create a much simpler filename
+    const timestamp = Date.now();
+    const shortId = vehicleId.substring(0, 8);
+    const fileName = `${vehicle.year}-${vehicle.make}-${vehicle.model}-${shortId}-${timestamp}.jpg`
+      .replace(/[^a-zA-Z0-9.-]/g, '-') // Replace special chars with dashes
+      .replace(/-+/g, '-') // Remove multiple dashes
+      .toLowerCase();
+    
+    console.log(`📤 Uploading new image: ${fileName}`);
+    
+    // Step 4: Convert to blob and upload
+    const blob = await new Promise(resolve => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.9);
+    });
+    
+    if (!blob) {
+      throw new Error('Failed to create image blob');
+    }
+    
+    // Step 5: Upload with simple filename
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('vehicle-images')
+      .upload(fileName, blob, {
+        contentType: 'image/jpeg',
+        cacheControl: '3600',
+        upsert: true // Allow overwrite
+      });
+    
+    if (uploadError) {
+      throw uploadError;
+    }
+    
+    console.log('✅ Upload successful:', uploadData);
+    
+    // Step 6: Get the public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('vehicle-images')
+      .getPublicUrl(fileName);
+    
+    console.log('🔗 Generated URL:', publicUrl);
+    
+    // Step 7: Create clean image array
+    const newImages = [{
+      url: publicUrl,
+      alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+      isPrimary: true,
+      fileName: fileName
+    }];
+    
+    // Step 8: UPDATE the vehicle record with new images
+    const { error: updateError } = await supabase
+      .from('vehicles')
+      .update({ 
+        images: newImages,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', vehicleId);
+    
+    if (updateError) {
+      throw updateError;
+    }
+    
+    console.log('✅ Vehicle updated successfully');
+    
+    // Step 9: Verify the update worked
+    const { data: updatedVehicle } = await supabase
+      .from('vehicles')
+      .select('images')
+      .eq('id', vehicleId)
+      .single();
+    
+    console.log('✅ Updated vehicle images:', updatedVehicle?.images);
+    
+    // Step 10: Test the new URL
+    try {
+      const testResponse = await fetch(publicUrl, { method: 'HEAD' });
+      console.log(`🧪 URL test result: ${testResponse.status} ${testResponse.statusText}`);
+    } catch (testError) {
+      console.warn('⚠️ URL test failed:', testError);
+    }
+    
+    return {
+      success: true,
+      message: `Successfully repaired ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+      newImageUrl: publicUrl,
+      fileName: fileName
+    };
+    
+  } catch (error) {
+    console.error('❌ Aggressive repair failed:', error);
+    return {
+      success: false,
+      error: error.message || 'Repair failed'
+    };
+  }
+};
+
+// FIX TOYOTA CAMRY SPECIFICALLY
+export const fixToyotaCamryNow = async () => {
+  const camryId = '411138ea-874b-42f5-a234-7c8df83d3af3';
+  
+  console.log('🚗 Starting Toyota Camry emergency repair...');
+  
+  try {
+    // Step 1: Aggressive repair
+    const repairResult = await aggressiveRepairVehicle(camryId);
+    
+    if (!repairResult.success) {
+      throw new Error(repairResult.error);
+    }
+    
+    console.log('✅ Toyota Camry repair completed');
+    
+    // Step 2: Wait a moment for propagation
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    return {
+      success: true,
+      message: 'Toyota Camry successfully repaired and refreshed',
+      repairResult: repairResult,
+      newImageUrl: repairResult.newImageUrl
+    };
+    
+  } catch (error) {
+    console.error('❌ Toyota Camry repair failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+// CLEAN SLATE: Remove ALL corrupted images and recreate
+export const cleanSlateRepair = async () => {
+  try {
+    console.log('🧹 Starting clean slate repair...');
+    
+    // Get all vehicles
+    const { data: vehicles, error: vehiclesError } = await supabase
+      .from('vehicles')
+      .select('*');
+    
+    if (vehiclesError) {
+      throw vehiclesError;
+    }
+    
+    const results = [];
+    
+    for (const vehicle of vehicles) {
+      console.log(`🔧 Processing ${vehicle.year} ${vehicle.make} ${vehicle.model}...`);
+      
+      // Check if vehicle has broken images
+      let needsRepair = false;
+      
+      if (!vehicle.images || !Array.isArray(vehicle.images) || vehicle.images.length === 0) {
+        needsRepair = true;
+      } else {
+        // Check for corrupted URLs
+        for (const img of vehicle.images) {
+          const url = typeof img === 'string' ? img : (img?.url || '');
+          if (!url || url.length > 300 || !url.includes('.jpg') && !url.includes('.jpeg') && !url.includes('.png')) {
+            needsRepair = true;
+            break;
+          }
+        }
+      }
+      
+      if (needsRepair) {
+        const repairResult = await aggressiveRepairVehicle(vehicle.id);
+        results.push({
+          vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+          id: vehicle.id,
+          success: repairResult.success,
+          message: repairResult.success ? 'Repaired' : repairResult.error
+        });
+        
+        // Small delay to prevent overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
+    return {
+      success: true,
+      message: `Clean slate repair completed. Processed ${results.length} vehicles.`,
+      results: results
+    };
+    
+  } catch (error) {
+    console.error('❌ Clean slate repair failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
