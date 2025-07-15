@@ -1,9 +1,11 @@
-// frontend/src/app/api/vehicles/route.js - FIXED IMAGE URL HANDLING
+// frontend/src/app/api/vehicles/route.js - FIXED IMAGE HANDLING
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
 export async function GET(request) {
   try {
+    console.log('🔍 API: Fetching vehicles...');
+    
     const { searchParams } = new URL(request.url);
     
     let query = supabase
@@ -60,67 +62,110 @@ export async function GET(request) {
     const { data, error } = await query;
 
     if (error) {
-      console.error('Database error:', error);
+      console.error('❌ Database error:', error);
       return NextResponse.json(
         { error: 'Failed to fetch vehicles', vehicles: [] },
         { status: 500 }
       );
     }
 
-    // FIXED: Process images properly for each vehicle
+    // SIMPLIFIED: Process images for each vehicle
     const processedVehicles = (data || []).map(vehicle => {
+      console.log(`Processing vehicle ${vehicle.id} images:`, vehicle.images);
+      
       // Ensure images is always an array
-      if (!vehicle.images) {
-        vehicle.images = [];
+      let imageArray = [];
+      
+      if (Array.isArray(vehicle.images)) {
+        imageArray = vehicle.images;
       } else if (typeof vehicle.images === 'string') {
         try {
-          vehicle.images = JSON.parse(vehicle.images);
+          imageArray = JSON.parse(vehicle.images);
+          if (!Array.isArray(imageArray)) {
+            imageArray = [imageArray];
+          }
         } catch (e) {
-          console.warn('Failed to parse images for vehicle:', vehicle.id);
-          vehicle.images = [];
+          console.warn(`Failed to parse images for vehicle ${vehicle.id}:`, e);
+          imageArray = [];
         }
+      } else if (vehicle.images && typeof vehicle.images === 'object') {
+        imageArray = [vehicle.images];
       }
       
       // Process each image with proper URL cleaning
-      if (Array.isArray(vehicle.images)) {
-        vehicle.images = vehicle.images.map((img, index) => {
+      const validImages = [];
+      
+      if (Array.isArray(imageArray) && imageArray.length > 0) {
+        imageArray.forEach((img, index) => {
+          let imageUrl = null;
+          let alt = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+          let isPrimary = index === 0;
+          let fileName = null;
+          
           if (typeof img === 'string') {
-            return {
-              url: cleanImageUrl(img) || '/hero.jpg',
-              alt: `${vehicle.year} ${vehicle.make} ${vehicle.model} - Image ${index + 1}`,
-              isPrimary: index === 0
-            };
+            imageUrl = img;
+          } else if (img && typeof img === 'object') {
+            imageUrl = img.url || img.publicUrl || img.src;
+            alt = img.alt || alt;
+            isPrimary = img.isPrimary !== undefined ? img.isPrimary : isPrimary;
+            fileName = img.fileName;
           }
-          return {
-            url: cleanImageUrl(img.url || img.publicUrl) || '/hero.jpg',
-            alt: img.alt || `${vehicle.year} ${vehicle.make} ${vehicle.model} - Image ${index + 1}`,
-            isPrimary: img.isPrimary || index === 0,
-            fileName: img.fileName
-          };
-        }).filter(img => img.url !== '/hero.jpg' || img.url === '/hero.jpg'); // Keep all images including fallbacks
-      } else {
-        vehicle.images = [];
+          
+          // Basic URL validation - be more permissive
+          if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
+            const cleanedUrl = imageUrl.trim();
+            
+            // Check if it's a valid URL structure
+            const isValidUrl = cleanedUrl.startsWith('http://') || 
+                             cleanedUrl.startsWith('https://') || 
+                             cleanedUrl.startsWith('/');
+            
+            if (isValidUrl) {
+              validImages.push({
+                url: cleanedUrl,
+                alt: alt || 'Vehicle Image',
+                isPrimary,
+                fileName
+              });
+              
+              console.log(`✅ Added image for vehicle ${vehicle.id}:`, cleanedUrl);
+            } else {
+              console.warn(`❌ Invalid URL structure for vehicle ${vehicle.id}:`, cleanedUrl);
+            }
+          }
+        });
       }
       
       // Ensure at least one image (fallback)
-      if (vehicle.images.length === 0) {
-        vehicle.images = [{
+      if (validImages.length === 0) {
+        validImages.push({
           url: '/hero.jpg',
           alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
           isPrimary: true,
           isFallback: true
-        }];
+        });
+        console.log(`Using fallback image for vehicle ${vehicle.id}`);
       }
+      
+      // Ensure at least one primary image
+      if (!validImages.some(img => img.isPrimary)) {
+        validImages[0].isPrimary = true;
+      }
+      
+      vehicle.images = validImages;
+      console.log(`Final images for vehicle ${vehicle.id}:`, validImages);
       
       return vehicle;
     });
 
+    console.log(`✅ API: Returning ${processedVehicles.length} vehicles`);
+    
     return NextResponse.json({ 
       vehicles: processedVehicles,
       total: processedVehicles.length 
     });
   } catch (error) {
-    console.error('API error:', error);
+    console.error('❌ API error:', error);
     return NextResponse.json(
       { error: 'Internal server error', vehicles: [] },
       { status: 500 }
@@ -128,207 +173,94 @@ export async function GET(request) {
   }
 }
 
-// FIXED: Image URL cleaning function
-function cleanImageUrl(url) {
-  if (!url || typeof url !== 'string') {
-    return null;
-  }
-  
-  url = url.trim();
-  
-  if (!url || url === '') {
-    return null;
-  }
-  
-  // Basic URL validation
-  const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
-  const hasValidExtension = validExtensions.some(ext => 
-    url.toLowerCase().includes(ext)
-  );
-  
-  const isSupabaseUrl = url.includes('supabase.co/storage');
-  const isValidStructure = url.startsWith('http://') || 
-                          url.startsWith('https://') || 
-                          url.startsWith('/');
-  
-  if (!(hasValidExtension || isSupabaseUrl) || !isValidStructure) {
-    return null;
-  }
-  
-  // Fix the double slash issue specifically for Supabase URLs
-  if (url.includes('supabase.co/storage')) {
-    // Replace multiple slashes but preserve the protocol slashes
-    url = url.replace(/([^:])\/\/+/g, '$1/');
-    
-    // Ensure HTTPS for Supabase URLs
-    if (url.startsWith('http://') && url.includes('supabase.co')) {
-      url = url.replace('http://', 'https://');
-    }
-  }
-  
-  return url;
-}
-
 export async function POST(request) {
   try {
+    console.log('🔨 API: Creating new vehicle...');
+    
     const formData = await request.formData();
     const vehicleData = {};
     const images = [];
 
     // Extract form data
     for (const [key, value] of formData.entries()) {
-      if (key.startsWith('image')) {
+      if (key.startsWith('image') && value instanceof File) {
         images.push(value);
+        console.log(`📷 Found image: ${value.name} (${Math.round(value.size / 1024)}KB)`);
       } else {
         vehicleData[key] = value;
       }
     }
 
-    console.log('Creating vehicle with data:', vehicleData);
-    console.log('Images count:', images.length);
-
-    // Ensure storage bucket exists
-    await ensureStorageBucket();
-
-    // Upload images
-    const imageUrls = [];
-    for (let i = 0; i < images.length; i++) {
-      const image = images[i];
-      
-      try {
-        // Validate image
-        if (!image || !image.name || !image.type) {
-          console.warn(`Invalid image at index ${i}`);
-          continue;
-        }
-        
-        if (!image.type.startsWith('image/')) {
-          console.warn(`Invalid image type at index ${i}:`, image.type);
-          continue;
-        }
-        
-        const fileExt = image.name.split('.').pop()?.toLowerCase() || 'jpg';
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-        
-        console.log(`Uploading image ${i + 1}/${images.length}: ${fileName}`);
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('vehicle-images')
-          .upload(fileName, image, {
-            cacheControl: '3600',
-            upsert: false,
-            contentType: image.type
-          });
-        
-        if (uploadError) {
-          console.error('Upload error:', uploadError);
-          continue;
-        }
-        
-        // FIXED: Get public URL and clean it properly
-        const { data: { publicUrl } } = supabase.storage
-          .from('vehicle-images')
-          .getPublicUrl(uploadData.path);
-        
-        const cleanedUrl = cleanImageUrl(publicUrl);
-        
-        if (cleanedUrl) {
-          imageUrls.push({
-            url: cleanedUrl,
-            alt: `${vehicleData.make} ${vehicleData.model} - Image ${i + 1}`,
-            isPrimary: i === 0,
-            fileName: uploadData.path
-          });
-          
-          console.log('✅ Image uploaded successfully:', fileName, '-> URL:', cleanedUrl);
-        } else {
-          console.error('❌ Failed to clean URL:', publicUrl);
-        }
-        
-      } catch (error) {
-        console.error(`Error uploading image ${i + 1}:`, error);
-      }
-    }
-
-    // If no images uploaded, add fallback
-    if (imageUrls.length === 0) {
-      imageUrls.push({
-        url: '/hero.jpg',
-        alt: `${vehicleData.make} ${vehicleData.model}`,
-        isPrimary: true,
-        isFallback: true
-      });
-    }
-
-    // Process form data
-    const processedVehicleData = {
-      year: parseInt(vehicleData.year),
+    console.log('📝 Vehicle data:', {
+      year: vehicleData.year,
       make: vehicleData.make,
       model: vehicleData.model,
-      trim: vehicleData.trim || null,
-      vin: vehicleData.vin || null,
-      price: parseFloat(vehicleData.price),
+      price: vehicleData.price,
+      imageCount: images.length
+    });
+
+    // SIMPLIFIED: Process form data with better type conversion
+    const processedVehicleData = {
+      year: parseInt(vehicleData.year) || new Date().getFullYear(),
+      make: String(vehicleData.make || '').trim(),
+      model: String(vehicleData.model || '').trim(),
+      trim: vehicleData.trim ? String(vehicleData.trim).trim() : null,
+      vin: vehicleData.vin ? String(vehicleData.vin).trim() : null,
+      price: parseFloat(vehicleData.price) || 0,
       sale_price: vehicleData.sale_price ? parseFloat(vehicleData.sale_price) : null,
-      mileage: parseInt(vehicleData.mileage),
-      body_type: vehicleData.body_type,
-      exterior_color: vehicleData.exterior_color,
-      interior_color: vehicleData.interior_color || null,
-      fuel_type: vehicleData.fuel_type,
-      transmission: vehicleData.transmission,
-      drivetrain: vehicleData.drivetrain || null,
-      engine: vehicleData.engine || null,
+      mileage: parseInt(vehicleData.mileage) || 0,
+      body_type: String(vehicleData.body_type || '').trim(),
+      exterior_color: String(vehicleData.exterior_color || '').trim(),
+      interior_color: vehicleData.interior_color ? String(vehicleData.interior_color).trim() : null,
+      fuel_type: String(vehicleData.fuel_type || '').trim(),
+      transmission: String(vehicleData.transmission || '').trim(),
+      drivetrain: vehicleData.drivetrain ? String(vehicleData.drivetrain).trim() : null,
+      engine: vehicleData.engine ? String(vehicleData.engine).trim() : null,
       features: parseArrayField(vehicleData.features),
       key_features: parseArrayField(vehicleData.key_features),
       financing_available: vehicleData.financing_available === 'true',
       monthly_payment: vehicleData.monthly_payment ? parseFloat(vehicleData.monthly_payment) : null,
-      stock_number: vehicleData.stock_number || `AP${Date.now().toString().slice(-6)}`,
+      stock_number: vehicleData.stock_number ? String(vehicleData.stock_number).trim() : `AP${Date.now().toString().slice(-6)}`,
       status: vehicleData.status || 'available',
       condition: vehicleData.condition || 'Good',
-      description: vehicleData.description || null,
+      description: vehicleData.description ? String(vehicleData.description).trim() : null,
       carfax_available: vehicleData.carfax_available === 'true',
-      carfax_url: vehicleData.carfax_url || null,
+      carfax_url: vehicleData.carfax_url ? String(vehicleData.carfax_url).trim() : null,
       featured: vehicleData.featured === 'true',
       accident_history: vehicleData.accident_history === 'true',
       number_of_owners: parseInt(vehicleData.number_of_owners) || 1,
-      service_records: vehicleData.service_records === 'true',
-      images: imageUrls,
-      views: 0,
-      created_at: new Date().toISOString()
+      service_records: vehicleData.service_records === 'true'
     };
 
-    console.log('Final vehicle data:', processedVehicleData);
-
-    // Insert into database
-    const { data, error } = await supabase
-      .from('vehicles')
-      .insert([processedVehicleData])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Database error:', error);
-      
-      // Clean up uploaded images on error
-      if (imageUrls.length > 0 && !imageUrls[0].isFallback) {
-        const filenames = imageUrls.map(img => img.fileName).filter(Boolean);
-        if (filenames.length > 0) {
-          await supabase.storage
-            .from('vehicle-images')
-            .remove(filenames)
-            .catch(e => console.error('Failed to clean up images:', e));
-        }
+    // Validation
+    const requiredFields = ['make', 'model', 'price', 'body_type', 'exterior_color', 'fuel_type', 'transmission'];
+    for (const field of requiredFields) {
+      if (!processedVehicleData[field]) {
+        return NextResponse.json(
+          { error: `Missing required field: ${field}` },
+          { status: 400 }
+        );
       }
-      
+    }
+
+    console.log('✅ Processed vehicle data:', processedVehicleData);
+
+    // Use createVehicle from supabase.js which handles all the image upload logic
+    const result = await createVehicle(processedVehicleData, images);
+
+    if (result.error) {
+      console.error('❌ Vehicle creation failed:', result.error);
       return NextResponse.json(
-        { error: 'Failed to create vehicle', details: error.message },
+        { error: 'Failed to create vehicle', details: result.error.message },
         { status: 500 }
       );
     }
 
-    console.log('✅ Vehicle created successfully:', data.id);
-    return NextResponse.json(data);
+    console.log('✅ Vehicle created successfully:', result.data.id);
+    return NextResponse.json(result.data);
+    
   } catch (error) {
-    console.error('POST error:', error);
+    console.error('❌ POST error:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }
@@ -336,14 +268,16 @@ export async function POST(request) {
   }
 }
 
-// Helper functions
+// Helper function to parse array fields
 function parseArrayField(field) {
   if (!field) return [];
   
   if (typeof field === 'string') {
     try {
+      // Try parsing as JSON first
       return JSON.parse(field);
     } catch (e) {
+      // Fall back to comma-separated parsing
       return field.split(',').map(item => item.trim()).filter(item => item);
     }
   }
@@ -355,29 +289,5 @@ function parseArrayField(field) {
   return [];
 }
 
-async function ensureStorageBucket() {
-  try {
-    const { data: files, error: accessError } = await supabase.storage
-      .from('vehicle-images')
-      .list('', { limit: 1 });
-    
-    if (!accessError) {
-      return true;
-    }
-    
-    const { data, error: createError } = await supabase.storage.createBucket('vehicle-images', {
-      public: true,
-      allowedMimeTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'],
-      fileSizeLimit: 52428800
-    });
-    
-    if (createError && !createError.message?.includes('already exists')) {
-      throw createError;
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Bucket setup error:', error);
-    return false;
-  }
-}
+// Import createVehicle from the fixed supabase module
+import { createVehicle } from '@/lib/supabase';
