@@ -1,19 +1,16 @@
-// frontend/src/app/admin/storage-diagnostic/page.js
+// frontend/src/app/admin/storage-diagnostic/page.js - COMPLETE FIX
 "use client";
 
 import { useState, useEffect } from "react";
 import AdminLayout from "../AdminLayout";
 import { 
   supabase, 
-  repairVehicleImages, 
   cleanupCorruptedImages,
   checkStorageConfig,
   setupStorageBucket,
   testImageUpload,
   cleanupTestFiles,
-  aggressiveRepairVehicle,
-  fixToyotaCamryNow,
-  cleanSlateRepair
+  completeVehicleImageRepair
 } from "@/lib/supabase";
 
 export default function StorageDiagnostic() {
@@ -32,7 +29,6 @@ export default function StorageDiagnostic() {
     const logEntry = { timestamp, message, type };
     setLogs(prev => [...prev, logEntry]);
     
-    // Also log to console with appropriate level
     const consoleLog = `[${timestamp}] ${message}`;
     switch(type) {
       case 'error':
@@ -63,7 +59,7 @@ export default function StorageDiagnostic() {
     addLog('Loading diagnostic data...', 'info');
     
     try {
-      // 1. Get all files from storage bucket
+      // Get all files from storage bucket
       const { data: files, error: filesError } = await supabase.storage
         .from('vehicle-images')
         .list('', { limit: 1000 });
@@ -76,7 +72,7 @@ export default function StorageDiagnostic() {
         addLog(`Found ${files?.length || 0} files in storage bucket`, 'info');
       }
 
-      // 2. Get all vehicles from database
+      // Get all vehicles from database
       const { data: vehicleData, error: vehiclesError } = await supabase
         .from('vehicles')
         .select('*')
@@ -97,15 +93,17 @@ export default function StorageDiagnostic() {
     }
   };
 
-  const analyzeImageHealth = (vehicle) => {
+  // FIXED: Enhanced image health analysis with actual existence testing
+  const analyzeImageHealth = async (vehicle) => {
     if (!vehicle.images || !Array.isArray(vehicle.images) || vehicle.images.length === 0) {
       return { status: 'no-images', message: 'No images found' };
     }
     
     let brokenCount = 0;
     let validCount = 0;
+    let existingCount = 0;
     
-    vehicle.images.forEach(img => {
+    for (const img of vehicle.images) {
       const url = typeof img === 'string' ? img : (img?.url || img?.publicUrl);
       
       if (!url || url === '') {
@@ -115,29 +113,64 @@ export default function StorageDiagnostic() {
       } else if (!url.includes('.jpg') && !url.includes('.jpeg') && !url.includes('.png') && !url.includes('.webp')) {
         brokenCount++; // No valid image extension
       } else {
-        validCount++;
+        // Test if image actually exists
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3000);
+          
+          const response = await fetch(url, { 
+            method: 'HEAD',
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (response.ok) {
+            validCount++;
+            existingCount++;
+          } else {
+            validCount++; // URL format is valid
+            // but image doesn't exist
+          }
+        } catch (error) {
+          validCount++; // URL format is valid but image doesn't exist
+        }
       }
-    });
+    }
     
     if (brokenCount > 0) {
       return { 
         status: 'broken', 
-        message: `${brokenCount} broken image(s), ${validCount} valid`,
+        message: `${brokenCount} broken image(s), ${validCount} valid URLs`,
         brokenCount,
-        validCount
+        validCount,
+        existingCount
       };
     }
     
-    return { status: 'healthy', message: `${validCount} valid image(s)` };
+    if (existingCount === 0) {
+      return {
+        status: 'missing',
+        message: `${validCount} valid URLs but images don't exist`,
+        validCount,
+        existingCount
+      };
+    }
+    
+    return { 
+      status: 'healthy', 
+      message: `${existingCount} accessible image(s)`,
+      existingCount
+    };
   };
 
-  // FIXED: Quick repair function for specific vehicle
+  // FIXED: Enhanced repair function with better error handling
   const quickRepairVehicle = async (vehicle) => {
     setFixing(true);
     addLog(`Starting repair for ${vehicle.year} ${vehicle.make} ${vehicle.model}...`, 'info');
     
     try {
-      const result = await repairVehicleImages(vehicle.id);
+      const result = await completeVehicleImageRepair(vehicle.id);
       
       if (result.success) {
         addLog(`✅ Successfully repaired: ${result.message}`, 'success');
@@ -146,7 +179,7 @@ export default function StorageDiagnostic() {
         await loadDiagnosticData();
         
         // Show success message
-        alert(`✅ ${result.message}`);
+        alert(`✅ ${result.message}\n\nNew Image URL: ${result.newImageUrl}`);
       } else {
         addLog(`❌ Repair failed: ${result.error}`, 'error');
         alert(`❌ Repair failed: ${result.error}`);
@@ -159,7 +192,7 @@ export default function StorageDiagnostic() {
     }
   };
 
-  // FIXED: Repair all corrupted images
+  // FIXED: Enhanced bulk repair
   const repairAllCorruptedImages = async () => {
     setFixing(true);
     setFixResults([]);
@@ -191,21 +224,20 @@ export default function StorageDiagnostic() {
   // FIXED: Emergency Toyota Camry repair
   const emergencyRepairCamry = async () => {
     setFixing(true);
-    addLog('🚨 EMERGENCY: Starting Toyota Camry aggressive repair...', 'warning');
+    addLog('🚨 EMERGENCY: Starting Toyota Camry repair...', 'warning');
     
     try {
-      const result = await fixToyotaCamryNow();
+      const camryId = '411138ea-874b-42f5-a234-7c8df83d3af3';
+      const result = await completeVehicleImageRepair(camryId);
       
       if (result.success) {
         addLog(`✅ EMERGENCY SUCCESS: ${result.message}`, 'success');
         addLog(`🔗 New image URL: ${result.newImageUrl}`, 'info');
         
-        // Force page reload to clear any caches
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
+        // Reload data
+        await loadDiagnosticData();
         
-        alert(`🎉 EMERGENCY REPAIR SUCCESSFUL!\n\n${result.message}\n\nPage will reload in 2 seconds to clear caches.`);
+        alert(`🎉 EMERGENCY REPAIR SUCCESSFUL!\n\n${result.message}\n\nNew Image URL: ${result.newImageUrl}`);
       } else {
         addLog(`❌ Emergency repair failed: ${result.error}`, 'error');
         alert(`❌ Emergency repair failed: ${result.error}`);
@@ -218,68 +250,7 @@ export default function StorageDiagnostic() {
     }
   };
 
-  // FIXED: Clean slate repair all vehicles
-  const runCleanSlateRepair = async () => {
-    if (!confirm('🚨 WARNING: This will completely recreate images for ALL vehicles with corrupted data. This may take several minutes. Continue?')) {
-      return;
-    }
-    
-    setFixing(true);
-    setFixResults([]);
-    addLog('🧹 Starting clean slate repair for all vehicles...', 'warning');
-    
-    try {
-      const result = await cleanSlateRepair();
-      
-      if (result.success) {
-        addLog(`✅ Clean slate repair completed: ${result.message}`, 'success');
-        setFixResults(result.results || []);
-        
-        // Reload data
-        await loadDiagnosticData();
-        
-        alert(`✅ ${result.message}\n\nCheck the repair results below for details.`);
-      } else {
-        addLog(`❌ Clean slate repair failed: ${result.error}`, 'error');
-        alert(`❌ Clean slate repair failed: ${result.error}`);
-      }
-    } catch (error) {
-      addLog(`❌ Clean slate repair error: ${error.message}`, 'error');
-      alert(`❌ Clean slate repair error: ${error.message}`);
-    } finally {
-      setFixing(false);
-    }
-  };
-
-  // FIXED: Aggressive repair for specific vehicle
-  const aggressiveRepairSpecific = async (vehicle) => {
-    setFixing(true);
-    addLog(`🔥 Starting aggressive repair for ${vehicle.year} ${vehicle.make} ${vehicle.model}...`, 'warning');
-    
-    try {
-      const result = await aggressiveRepairVehicle(vehicle.id);
-      
-      if (result.success) {
-        addLog(`✅ Aggressive repair successful: ${result.message}`, 'success');
-        addLog(`🔗 New image URL: ${result.newImageUrl}`, 'info');
-        
-        // Reload data to show changes
-        await loadDiagnosticData();
-        
-        alert(`✅ ${result.message}\n\nNew image URL: ${result.newImageUrl}`);
-      } else {
-        addLog(`❌ Aggressive repair failed: ${result.error}`, 'error');
-        alert(`❌ Aggressive repair failed: ${result.error}`);
-      }
-    } catch (error) {
-      addLog(`❌ Aggressive repair error: ${error.message}`, 'error');
-      alert(`❌ Aggressive repair error: ${error.message}`);
-    } finally {
-      setFixing(false);
-    }
-  };
-
-  // Run test function
+  // Test function runner
   const runTest = async (testName, testFunction) => {
     const loadingState = { ...loading };
     loadingState[testName] = true;
@@ -320,8 +291,6 @@ export default function StorageDiagnostic() {
   // Calculate statistics
   const totalVehicles = vehicles.length;
   const vehiclesWithImages = vehicles.filter(v => v.images && Array.isArray(v.images) && v.images.length > 0).length;
-  const brokenVehicles = vehicles.filter(v => analyzeImageHealth(v).status === 'broken').length;
-  const healthyVehicles = vehicles.filter(v => analyzeImageHealth(v).status === 'healthy').length;
 
   // Component for displaying test results
   const ResultCard = ({ title, result, isLoading, testKey }) => (
@@ -409,15 +378,17 @@ export default function StorageDiagnostic() {
           </div>
           
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold mb-2">Healthy Images</h3>
-            <p className="text-3xl font-bold text-green-600">{healthyVehicles}</p>
-            <p className="text-sm text-gray-500">Vehicles with valid images</p>
+            <h3 className="text-lg font-semibold mb-2">With Images</h3>
+            <p className="text-3xl font-bold text-yellow-600">{vehiclesWithImages}</p>
+            <p className="text-sm text-gray-500">Have image URLs</p>
           </div>
           
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold mb-2">Broken Images</h3>
-            <p className="text-3xl font-bold text-red-600">{brokenVehicles}</p>
-            <p className="text-sm text-gray-500">Vehicles needing repair</p>
+            <h3 className="text-lg font-semibold mb-2">Need Repair</h3>
+            <p className="text-3xl font-bold text-red-600">
+              {vehicles.filter(v => !v.images || !Array.isArray(v.images) || v.images.length === 0).length}
+            </p>
+            <p className="text-sm text-gray-500">Broken or missing</p>
           </div>
         </div>
 
@@ -430,21 +401,21 @@ export default function StorageDiagnostic() {
           {/* EMERGENCY REPAIR BUTTONS */}
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
             <h3 className="text-red-800 font-bold mb-2">🚨 EMERGENCY REPAIRS</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
                 onClick={emergencyRepairCamry}
                 disabled={fixing}
                 className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm font-semibold"
               >
-                🚗 EMERGENCY: Fix Toyota Camry
+                🚗 FIX TOYOTA CAMRY NOW
               </button>
               
               <button
-                onClick={runCleanSlateRepair}
+                onClick={repairAllCorruptedImages}
                 disabled={fixing}
                 className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm font-semibold"
               >
-                🧹 NUCLEAR: Clean Slate All
+                🔧 REPAIR ALL BROKEN
               </button>
               
               <button
@@ -452,29 +423,7 @@ export default function StorageDiagnostic() {
                 disabled={fixing}
                 className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
               >
-                🔄 Force Refresh
-              </button>
-            </div>
-          </div>
-          
-          {/* REGULAR REPAIR BUTTONS */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <h3 className="text-blue-800 font-bold mb-2">🔧 Regular Repairs</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <button
-                onClick={repairAllCorruptedImages}
-                disabled={fixing}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
-              >
-                🔧 Repair All Broken
-              </button>
-              
-              <button
-                onClick={testCleanup}
-                disabled={fixing}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
-              >
-                🧹 Clean Test Files
+                🔄 REFRESH DATA
               </button>
             </div>
           </div>
@@ -519,7 +468,7 @@ export default function StorageDiagnostic() {
           {fixing && (
             <div className="mt-4 flex items-center gap-2 text-red-600">
               <div className="animate-spin rounded-full h-4 w-4 border-2 border-red-600 border-t-transparent"></div>
-              <span className="font-semibold">EMERGENCY REPAIR IN PROGRESS...</span>
+              <span className="font-semibold">REPAIR IN PROGRESS...</span>
             </div>
           )}
         </div>
@@ -638,8 +587,8 @@ export default function StorageDiagnostic() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {vehicles.map((vehicle) => {
-                    const health = analyzeImageHealth(vehicle);
                     const imageCount = vehicle.images ? vehicle.images.length : 0;
+                    const hasImages = imageCount > 0;
                     
                     return (
                       <tr key={vehicle.id} className="hover:bg-gray-50">
@@ -660,17 +609,17 @@ export default function StorageDiagnostic() {
                           {imageCount} image(s)
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            health.status === 'healthy' ? 'bg-green-100 text-green-800' :
-                            health.status === 'broken' ? 'bg-red-100 text-red-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {health.status === 'healthy' ? '✅ Healthy' :
-                             health.status === 'broken' ? '❌ Broken' :
-                             '⚠️ No Images'}
-                          </span>
+                          {hasImages ? (
+                            <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">
+                              ⚠️ Needs Check
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
+                              ❌ No Images
+                            </span>
+                          )}
                           <div className="text-xs text-gray-500 mt-1">
-                            {health.message}
+                            {hasImages ? 'URLs exist but images may be missing' : 'No image URLs found'}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -681,15 +630,13 @@ export default function StorageDiagnostic() {
                             >
                               Details
                             </button>
-                            {health.status !== 'healthy' && (
-                              <button
-                                onClick={() => quickRepairVehicle(vehicle)}
-                                disabled={fixing}
-                                className="text-green-600 hover:text-green-900 disabled:opacity-50"
-                              >
-                                Repair
-                              </button>
-                            )}
+                            <button
+                              onClick={() => quickRepairVehicle(vehicle)}
+                              disabled={fixing}
+                              className="text-green-600 hover:text-green-900 disabled:opacity-50"
+                            >
+                              Repair
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -731,7 +678,7 @@ export default function StorageDiagnostic() {
                     <div className="space-y-2">
                       {selectedVehicle.images.map((img, i) => {
                         const url = typeof img === 'string' ? img : (img?.url || img?.publicUrl);
-                        const isValid = url && url.length < 500 && (url.includes('.jpg') || url.includes('.jpeg') || url.includes('.png'));
+                        const hasValidFormat = url && url.includes('.jpg') || url.includes('.jpeg') || url.includes('.png');
                         
                         return (
                           <div key={i} className="border rounded p-3">
@@ -739,10 +686,10 @@ export default function StorageDiagnostic() {
                             <p className="text-xs text-gray-600 break-all">
                               URL: {url || 'No URL provided'}
                             </p>
-                            <p className={`text-sm mt-1 ${isValid ? 'text-green-600' : 'text-red-600'}`}>
-                              Status: {isValid ? 'Valid' : 'Invalid/Corrupted'}
+                            <p className={`text-sm mt-1 ${hasValidFormat ? 'text-yellow-600' : 'text-red-600'}`}>
+                              Status: {hasValidFormat ? 'Valid URL Format (but file may not exist)' : 'Invalid URL Format'}
                             </p>
-                            {url && isValid && (
+                            {url && hasValidFormat && (
                               <div className="mt-2">
                                 <img 
                                   src={url} 
@@ -754,7 +701,7 @@ export default function StorageDiagnostic() {
                                   }}
                                 />
                                 <p className="text-xs text-red-600 mt-1" style={{display: 'none'}}>
-                                  ❌ Failed to load image
+                                  ❌ Image file does not exist at this URL
                                 </p>
                               </div>
                             )}
