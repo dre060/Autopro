@@ -47,10 +47,12 @@ export default function StorageDiagnostic() {
     } finally {
       setLoading(false);
     }
-  };
 
   const checkImageStatus = (imageUrl) => {
     if (!imageUrl) return { status: 'missing', message: 'No URL provided' };
+    
+    // Handle empty strings
+    if (imageUrl === '') return { status: 'missing', message: 'Empty URL' };
     
     // Extract filename from URL
     const urlParts = imageUrl.split('/');
@@ -172,32 +174,269 @@ export default function StorageDiagnostic() {
 
   const fixAllBrokenImages = async () => {
     setFixResults([]);
+    setError("");
     
-    for (const vehicle of vehicles) {
-      if (!vehicle.images || vehicle.images.length === 0) continue;
+    try {
+      console.log('Starting fix for broken images...');
       
-      let hasBrokenImages = false;
+      // Find vehicles with broken images
+      const vehiclesWithBrokenImages = vehicles.filter(v => {
+        if (!v.images || v.images.length === 0) return false;
+        return v.images.some(img => {
+          if (!img || !img.url || img.url === '') return true;
+          const status = checkImageStatus(img.url);
+          return status.status === 'not-found' || status.status === 'missing';
+        });
+      });
       
-      for (const image of vehicle.images) {
-        const status = checkImageStatus(image.url);
-        if (status.status === 'not-found') {
-          hasBrokenImages = true;
-          break;
+      console.log(`Found ${vehiclesWithBrokenImages.length} vehicles with broken images`);
+      
+      if (vehiclesWithBrokenImages.length === 0) {
+        alert('No broken images found to fix!');
+        return;
+      }
+      
+      for (const vehicle of vehiclesWithBrokenImages) {
+        console.log(`Fixing images for vehicle ${vehicle.id}...`);
+        
+        try {
+          // Create a simple test image
+          const fileName = `vehicle-${vehicle.id}-${Date.now()}.jpg`;
+          
+          // Create a blob directly using fetch from a data URL
+          const canvas = document.createElement('canvas');
+          canvas.width = 800;
+          canvas.height = 600;
+          const ctx = canvas.getContext('2d');
+          
+          // Create gradient background
+          const gradient = ctx.createLinearGradient(0, 0, 800, 600);
+          gradient.addColorStop(0, '#1e3a8a');
+          gradient.addColorStop(1, '#3b82f6');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(0, 0, 800, 600);
+          
+          // Add text
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 48px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${vehicle.year} ${vehicle.make} ${vehicle.model}`, 400, 280);
+          ctx.font = '24px Arial';
+          ctx.fillText('Placeholder Image', 400, 340);
+          
+          // Convert to blob
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+          const response = await fetch(dataUrl);
+          const blob = await response.blob();
+          
+          console.log(`Created blob of size ${blob.size} bytes`);
+          
+          // Upload to Supabase
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('vehicle-images')
+            .upload(fileName, blob, {
+              contentType: 'image/jpeg',
+              cacheControl: '3600'
+            });
+          
+          if (uploadError) {
+            console.error('Upload error:', uploadError);
+            throw new Error(`Upload failed: ${uploadError.message}`);
+          }
+          
+          console.log('Upload successful:', uploadData);
+          
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from('vehicle-images')
+            .getPublicUrl(fileName);
+          
+          console.log('Public URL:', urlData.publicUrl);
+          
+          // Update vehicle with new image
+          const newImage = {
+            url: urlData.publicUrl,
+            alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+            isPrimary: true,
+            fileName: fileName
+          };
+          
+          const { error: updateError } = await supabase
+            .from('vehicles')
+            .update({ 
+              images: [newImage]
+            })
+            .eq('id', vehicle.id);
+          
+          if (updateError) {
+            console.error('Update error:', updateError);
+            throw new Error(`Database update failed: ${updateError.message}`);
+          }
+          
+          console.log(`Successfully fixed vehicle ${vehicle.id}`);
+          
+          setFixResults(prev => [...prev, {
+            vehicleId: vehicle.id,
+            vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+            results: [{
+              action: 'complete',
+              success: true,
+              message: 'Successfully created placeholder image',
+              newUrl: urlData.publicUrl
+            }]
+          }]);
+          
+        } catch (error) {
+          console.error(`Error fixing vehicle ${vehicle.id}:`, error);
+          setFixResults(prev => [...prev, {
+            vehicleId: vehicle.id,
+            vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+            results: [{
+              action: 'error',
+              success: false,
+              error: error.message
+            }]
+          }]);
         }
       }
       
-      if (hasBrokenImages) {
-        const results = await fixVehicleImages(vehicle);
-        setFixResults(prev => [...prev, {
-          vehicleId: vehicle.id,
-          vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-          results
-        }]);
-      }
+      // Reload data after fixes
+      setTimeout(() => {
+        loadDiagnosticData();
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Error in fixAllBrokenImages:', error);
+      setError(`Failed to fix broken images: ${error.message}`);
+      alert(`Error: ${error.message}`);
     }
   };
 
-  const deleteOrphanedFiles = async () => {
+  // Add fallback image without upload
+  const addFallbackImage = async (vehicle) => {
+    try {
+      const { error } = await supabase
+        .from('vehicles')
+        .update({ 
+          images: [{
+            url: '/hero.jpg',
+            alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+            isPrimary: true
+          }]
+        })
+        .eq('id', vehicle.id);
+      
+      if (error) throw error;
+      
+      alert('✅ Added fallback image!');
+      loadDiagnosticData();
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  // Simple direct fix for a single vehicle
+  const quickFixVehicle = async (vehicle) => {
+    try {
+      console.log(`Quick fixing vehicle ${vehicle.id}...`);
+      setError("");
+      
+      // First, try to upload a new image
+      try {
+        const fileName = `placeholder-${vehicle.id}-${Date.now()}.jpg`;
+        
+        // Create a simple colored rectangle as placeholder
+        const canvas = document.createElement('canvas');
+        canvas.width = 800;
+        canvas.height = 600;
+        const ctx = canvas.getContext('2d');
+        
+        // Simple blue background
+        ctx.fillStyle = '#3b82f6';
+        ctx.fillRect(0, 0, 800, 600);
+        
+        // Add vehicle text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '48px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${vehicle.year} ${vehicle.make} ${vehicle.model}`, 400, 300);
+        
+        // Convert canvas to blob
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
+        
+        if (!blob) {
+          throw new Error('Failed to create image blob');
+        }
+        
+        console.log(`Uploading ${fileName} (${blob.size} bytes)...`);
+        
+        // Upload to Supabase
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('vehicle-images')
+          .upload(fileName, blob);
+        
+        if (uploadError) {
+          throw uploadError;
+        }
+        
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('vehicle-images')
+          .getPublicUrl(fileName);
+        
+        console.log('Got public URL:', publicUrl);
+        
+        // Update vehicle record
+        const { error: updateError } = await supabase
+          .from('vehicles')
+          .update({ 
+            images: [{
+              url: publicUrl,
+              alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+              isPrimary: true,
+              fileName: fileName
+            }]
+          })
+          .eq('id', vehicle.id);
+        
+        if (updateError) {
+          throw updateError;
+        }
+        
+        alert(`✅ Successfully fixed images for ${vehicle.year} ${vehicle.make} ${vehicle.model}`);
+        
+      } catch (uploadError) {
+        console.error('Upload failed, using fallback:', uploadError);
+        
+        // If upload fails, just use the fallback image
+        const { error: fallbackError } = await supabase
+          .from('vehicles')
+          .update({ 
+            images: [{
+              url: '/hero.jpg',
+              alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+              isPrimary: true
+            }]
+          })
+          .eq('id', vehicle.id);
+        
+        if (fallbackError) {
+          throw fallbackError;
+        }
+        
+        alert(`✅ Added fallback image for ${vehicle.year} ${vehicle.make} ${vehicle.model} (upload failed)`);
+      }
+      
+      // Reload data
+      loadDiagnosticData();
+      
+    } catch (error) {
+      console.error('Quick fix error:', error);
+      alert(`❌ Error: ${error.message}`);
+    }
+  };
     // Find files in bucket that aren't referenced by any vehicle
     const referencedFiles = new Set();
     
@@ -297,7 +536,7 @@ export default function StorageDiagnostic() {
         {/* Action Buttons */}
         <div className="bg-white rounded-lg shadow p-6 mb-8">
           <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-          <div className="flex gap-4">
+          <div className="flex gap-4 flex-wrap">
             <button
               onClick={loadDiagnosticData}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
@@ -308,13 +547,68 @@ export default function StorageDiagnostic() {
               onClick={fixAllBrokenImages}
               className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg"
             >
-              🔧 Fix Broken Images
+              🔧 Fix All Broken Images
             </button>
             <button
               onClick={deleteOrphanedFiles}
               className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg"
             >
               🗑️ Clean Orphaned Files
+            </button>
+            <button
+              onClick={async () => {
+                // Manual fix - add a working test image URL directly
+                const vehicle = vehicles.find(v => v.id === '411138ea-874b-42f5-a234-7c8df83d3af3');
+                if (!vehicle) {
+                  alert('Vehicle not found!');
+                  return;
+                }
+                
+                try {
+                  const { error } = await supabase
+                    .from('vehicles')
+                    .update({ 
+                      images: [{
+                        url: '/hero.jpg',
+                        alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+                        isPrimary: true
+                      }]
+                    })
+                    .eq('id', vehicle.id);
+                  
+                  if (error) throw error;
+                  
+                  alert('✅ Added fallback image to vehicle!');
+                  loadDiagnosticData();
+                } catch (err) {
+                  alert(`Error: ${err.message}`);
+                }
+              }}
+              className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg"
+            >
+              🚑 Quick Fix Toyota
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const testFile = new File(['test'], 'test-upload.txt', { type: 'text/plain' });
+                  const { error } = await supabase.storage
+                    .from('vehicle-images')
+                    .upload(`test-${Date.now()}.txt`, testFile);
+                  
+                  if (error) {
+                    alert(`Storage test failed: ${error.message}`);
+                  } else {
+                    alert('✅ Storage is working! You can upload files.');
+                    loadDiagnosticData();
+                  }
+                } catch (err) {
+                  alert(`Storage test error: ${err.message}`);
+                }
+              }}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg"
+            >
+              🧪 Test Storage
             </button>
           </div>
         </div>
@@ -371,8 +665,9 @@ export default function StorageDiagnostic() {
                   {vehicles.map((vehicle) => {
                     const hasImages = vehicle.images && vehicle.images.length > 0;
                     const brokenImageCount = hasImages ? vehicle.images.filter(img => {
+                      if (!img || !img.url || img.url === '') return true;
                       const status = checkImageStatus(img.url);
-                      return status.status === 'not-found';
+                      return status.status === 'not-found' || status.status === 'missing';
                     }).length : 0;
                     
                     return (
@@ -394,11 +689,11 @@ export default function StorageDiagnostic() {
                                 {vehicle.images.length} image(s)
                               </p>
                               {vehicle.images.map((img, i) => {
-                                const status = checkImageStatus(img.url);
+                                const status = checkImageStatus(img?.url);
                                 return (
                                   <div key={i} className="text-xs mt-1">
                                     <span className={status.status === 'exists' ? 'text-green-600' : 'text-red-600'}>
-                                      {status.status === 'exists' ? '✓' : '✗'} {status.filename || 'Unknown file'}
+                                      {status.status === 'exists' ? '✓' : '✗'} {status.filename || status.message || 'Unknown file'}
                                     </span>
                                   </div>
                                 );
@@ -431,19 +726,44 @@ export default function StorageDiagnostic() {
                             Details
                           </button>
                           {brokenImageCount > 0 && (
-                            <button
-                              onClick={() => fixVehicleImages(vehicle).then(results => {
-                                setFixResults([{
-                                  vehicleId: vehicle.id,
-                                  vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-                                  results
-                                }]);
-                                loadDiagnosticData();
-                              })}
-                              className="text-green-600 hover:text-green-900"
-                            >
-                              Fix
-                            </button>
+                            <>
+                              <button
+                                onClick={() => addFallbackImage(vehicle)}
+                                className="text-blue-600 hover:text-blue-900 mr-3"
+                                title="Add /hero.jpg as fallback"
+                              >
+                                Fallback
+                              </button>
+                              <button
+                                onClick={() => quickFixVehicle(vehicle)}
+                                className="text-green-600 hover:text-green-900 mr-3"
+                                title="Upload new placeholder"
+                              >
+                                Fix
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (confirm('Clear all images for this vehicle?')) {
+                                    try {
+                                      const { error } = await supabase
+                                        .from('vehicles')
+                                        .update({ images: [] })
+                                        .eq('id', vehicle.id);
+                                      
+                                      if (error) throw error;
+                                      alert('Images cleared');
+                                      loadDiagnosticData();
+                                    } catch (err) {
+                                      alert(`Error: ${err.message}`);
+                                    }
+                                  }
+                                }}
+                                className="text-orange-600 hover:text-orange-900"
+                                title="Clear all images"
+                              >
+                                Clear
+                              </button>
+                            </>
                           )}
                         </td>
                       </tr>
@@ -484,15 +804,15 @@ export default function StorageDiagnostic() {
                     <h4 className="font-semibold mb-2">Image Analysis:</h4>
                     <div className="space-y-2">
                       {selectedVehicle.images.map((img, i) => {
-                        const status = checkImageStatus(img.url);
+                        const status = checkImageStatus(img?.url);
                         return (
                           <div key={i} className="border rounded p-3">
                             <p className="text-sm font-medium">Image {i + 1}:</p>
-                            <p className="text-xs text-gray-600 break-all">URL: {img.url}</p>
+                            <p className="text-xs text-gray-600 break-all">URL: {img?.url || 'No URL'}</p>
                             <p className={`text-sm mt-1 ${status.status === 'exists' ? 'text-green-600' : 'text-red-600'}`}>
                               Status: {status.message}
                             </p>
-                            {img.url && (
+                            {img?.url && img.url !== '' && (
                               <div className="mt-2">
                                 <img 
                                   src={img.url} 
@@ -521,4 +841,4 @@ export default function StorageDiagnostic() {
       </div>
     </AdminLayout>
   );
-}
+};
