@@ -1,10 +1,6 @@
 // frontend/src/app/api/vehicles/route.js - FIXED IMAGE HANDLING
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-
-// frontend/src/app/api/vehicles/route.js - ENHANCED DEBUG VERSION
-import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabase, createVehicle } from '@/lib/supabase';
 
 export async function GET(request) {
   try {
@@ -317,6 +313,3 @@ function parseArrayField(field) {
   
   return [];
 }
-
-// Import createVehicle from the fixed supabase module
-import { createVehicle } from '@/lib/supabase';
