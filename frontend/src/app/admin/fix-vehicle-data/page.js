@@ -156,62 +156,129 @@ export default function FixVehicleData() {
     }
   };
 
-  const fixAllVehicleImages = async () => {
-    if (!confirm('This will assign the first available image to all vehicles without proper images. Continue?')) {
+  const syncDatabaseWithStorage = async () => {
+    if (!confirm('This will update vehicle records to use the actual files in storage. Continue?')) {
       return;
     }
     
     try {
       setLoading(true);
       
-      const vehiclesNeedingRepair = results.filter(r => r.needsRepair);
+      console.log('🔄 Syncing database with storage...');
       
-      for (let i = 0; i < vehiclesNeedingRepair.length; i++) {
-        const vehicle = vehiclesNeedingRepair[i];
+      // Get all available storage files
+      const { data: files, error: filesError } = await supabase.storage
+        .from('vehicle-images')
+        .list('', { limit: 100 });
+      
+      if (filesError) {
+        throw filesError;
+      }
+      
+      console.log('Available files in storage:', files);
+      
+      if (files.length === 0) {
+        alert('No files found in storage to sync');
+        return;
+      }
+      
+      // Get all vehicles
+      const { data: vehicles, error: vehiclesError } = await supabase
+        .from('vehicles')
+        .select('*');
+      
+      if (vehiclesError) {
+        throw vehiclesError;
+      }
+      
+      const syncResults = [];
+      
+      // Assign files to vehicles
+      for (let i = 0; i < vehicles.length; i++) {
+        const vehicle = vehicles[i];
         
-        // Use a different image for each vehicle if available
-        const fileIndex = i % storageFiles.length;
-        const file = storageFiles[fileIndex];
+        // Use files in rotation
+        const fileIndex = i % files.length;
+        const file = files[fileIndex];
         
-        if (!file) continue;
+        console.log(`Syncing vehicle ${i + 1}/${vehicles.length}: ${vehicle.year} ${vehicle.make} ${vehicle.model}`);
+        console.log(`Assigning file: ${file.name}`);
         
+        // Generate public URL for the actual file
         const { data: { publicUrl } } = supabase.storage
           .from('vehicle-images')
           .getPublicUrl(file.name);
         
-        const imageData = [{
-          url: publicUrl,
-          alt: vehicle.name,
-          isPrimary: true,
-          fileName: file.name
-        }];
+        console.log(`Generated URL: ${publicUrl}`);
         
-        console.log(`Fixing vehicle ${i + 1}/${vehiclesNeedingRepair.length}: ${vehicle.name}`);
-        
-        const { error } = await supabase
-          .from('vehicles')
-          .update({ 
-            images: imageData,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', vehicle.id);
-        
-        if (error) {
-          console.error(`Failed to fix ${vehicle.name}:`, error);
+        // Test the URL to make sure it works
+        try {
+          const testResponse = await fetch(publicUrl, { method: 'HEAD' });
+          console.log(`URL test for ${file.name}: ${testResponse.status}`);
+          
+          if (testResponse.ok) {
+            // Create proper image data
+            const imageData = [{
+              url: publicUrl,
+              alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+              isPrimary: true,
+              fileName: file.name
+            }];
+            
+            // Update vehicle record
+            const { error: updateError } = await supabase
+              .from('vehicles')
+              .update({ 
+                images: imageData,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', vehicle.id);
+            
+            if (updateError) {
+              throw updateError;
+            }
+            
+            syncResults.push({
+              vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+              file: file.name,
+              url: publicUrl,
+              status: '✅ Success'
+            });
+            
+          } else {
+            syncResults.push({
+              vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+              file: file.name,
+              url: publicUrl,
+              status: `❌ URL test failed: ${testResponse.status}`
+            });
+          }
+          
+        } catch (testError) {
+          syncResults.push({
+            vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+            file: file.name,
+            url: publicUrl,
+            status: `❌ URL test error: ${testError.message}`
+          });
         }
         
-        // Small delay to avoid overwhelming the database
+        // Small delay to avoid overwhelming the API
         await new Promise(resolve => setTimeout(resolve, 500));
       }
       
-      alert(`✅ Repair complete! Fixed ${vehiclesNeedingRepair.length} vehicles.`);
+      console.log('Sync results:', syncResults);
+      
+      // Show results
+      const successCount = syncResults.filter(r => r.status.includes('✅')).length;
+      alert(`✅ Sync complete! Successfully synced ${successCount}/${syncResults.length} vehicles.\n\nCheck console for detailed results.`);
       
       // Refresh analysis
       analyzeVehicleData();
       
     } catch (error) {
-      console.error('❌ Bulk fix error:', error);
-      alert(`Bulk fix failed: ${error.message}`);
+      console.error('❌ Sync error:', error);
+      alert(`Sync failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -245,12 +312,30 @@ export default function FixVehicleData() {
       <div className="max-w-6xl mx-auto p-6">
         <h1 className="text-3xl font-bold mb-6 text-gray-900">🔧 Fix Vehicle Image Data</h1>
         
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <h2 className="font-semibold text-red-800 mb-2">🚨 Common Issue: 404 Image Errors</h2>
+          <div className="text-red-700 text-sm space-y-2">
+            <p>
+              <strong>Problem:</strong> Vehicle records show "Valid Images" but you still see 404 errors when loading the page.
+            </p>
+            <p>
+              <strong>Cause:</strong> Database URLs point to files that were deleted or renamed in storage.
+            </p>
+            <p>
+              <strong>Solution:</strong> Click <strong>"🔄 Sync with Storage"</strong> to update all vehicle records to use the actual files in storage.
+            </p>
+          </div>
+        </div>
           <h2 className="font-semibold text-yellow-800 mb-2">🔍 What This Does</h2>
-          <p className="text-yellow-700 text-sm">
-            This tool analyzes vehicle records in your database and identifies which ones have missing or invalid image data,
-            even though images exist in storage. It can then assign the available storage images to vehicles that need them.
-          </p>
+          <div className="text-yellow-700 text-sm space-y-2">
+            <p>
+              This tool analyzes vehicle records in your database and identifies which ones have missing or invalid image data.
+            </p>
+            <p>
+              <strong>🔄 Sync with Storage:</strong> Updates all vehicle records to use the actual files currently in your Supabase storage bucket.
+              This fixes the common issue where database URLs point to files that no longer exist.
+            </p>
+          </div>
         </div>
 
         <div className="bg-white rounded-lg shadow p-6 mb-6">
@@ -277,11 +362,11 @@ export default function FixVehicleData() {
                   </button>
                   
                   <button
-                    onClick={fixAllVehicleImages}
+                    onClick={syncDatabaseWithStorage}
                     disabled={loading}
                     className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded font-semibold"
                   >
-                    🔧 Fix All Vehicles
+                    🔄 Sync with Storage
                   </button>
                 </>
               )}
@@ -400,14 +485,14 @@ export default function FixVehicleData() {
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mt-6">
           <h2 className="text-lg font-bold mb-4">💡 Understanding the Results</h2>
           <div className="text-sm space-y-2 text-gray-700">
-            <p><strong>✅ Valid Images:</strong> Vehicle has proper Supabase image URLs</p>
-            <p><strong>❌ Needs Repair:</strong> Vehicle has no images or fallback images only</p>
-            <p><strong>🔧 Fix Button:</strong> Assigns an available storage image to the vehicle</p>
-            <p><strong>🔧 Fix All:</strong> Repairs all vehicles that need images</p>
+            <p><strong>✅ Valid Images:</strong> Vehicle has proper Supabase image URLs that are accessible</p>
+            <p><strong>❌ Needs Repair:</strong> Vehicle has no images or URLs pointing to missing files</p>
+            <p><strong>🔄 Sync with Storage:</strong> Updates ALL vehicles to use actual files in storage (RECOMMENDED)</p>
+            <p><strong>🔧 Fix Button:</strong> Assigns an available storage image to a specific vehicle</p>
             <p><strong>🧪 Test URLs:</strong> Checks if all image URLs are accessible (see console)</p>
+            <p className="bg-blue-50 p-2 rounded mt-3"><strong>💡 Tip:</strong> If you see "Valid Images" but still get 404 errors, use "Sync with Storage" to fix URL mismatches.</p>
           </div>
-        </div>
-      </div>
+          </div>
     </AdminLayout>
   );
 }
