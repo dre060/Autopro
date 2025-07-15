@@ -289,7 +289,7 @@ export const uploadVehicleImages = async (images) => {
   };
 };
 
-// FIXED: Get vehicles with simplified image processing
+// ENHANCED: Get vehicles with detailed URL debugging
 export const getVehicles = async (filters = {}) => {
   console.log('🔍 Fetching vehicles with filters:', filters);
   
@@ -315,10 +315,26 @@ export const getVehicles = async (filters = {}) => {
     return { data: null, error };
   }
   
-  // Process images for each vehicle
+  // Process images for each vehicle with detailed debugging
   if (data && Array.isArray(data)) {
-    data.forEach(vehicle => {
-      vehicle.images = processVehicleImages(vehicle);
+    data.forEach((vehicle, vehicleIndex) => {
+      console.log(`\n🚗 Processing vehicle ${vehicleIndex + 1}/${data.length}: ${vehicle.year} ${vehicle.make} ${vehicle.model}`);
+      console.log('Raw images data:', vehicle.images);
+      console.log('Raw images type:', typeof vehicle.images);
+      
+      const processedImages = processVehicleImages(vehicle);
+      
+      console.log('Processed images:', processedImages);
+      if (processedImages && processedImages.length > 0) {
+        processedImages.forEach((img, imgIndex) => {
+          console.log(`  📷 Image ${imgIndex + 1}: ${img.url}`);
+          console.log(`    - Alt: ${img.alt}`);
+          console.log(`    - Primary: ${img.isPrimary}`);
+          console.log(`    - Fallback: ${img.isFallback || false}`);
+        });
+      }
+      
+      vehicle.images = processedImages;
     });
   }
   
@@ -688,26 +704,70 @@ export const completeVehicleImageRepair = async (vehicleId) => {
   }
 };
 
-// Storage bucket setup
+// ENHANCED: Storage bucket setup with better configuration
 export const ensureStorageBucket = async () => {
   try {
-    console.log('🪣 Checking storage bucket...');
+    console.log('🪣 Ensuring storage bucket exists...');
     
+    // First try to access the bucket
     const { data: files, error: accessError } = await supabase.storage
       .from('vehicle-images')
       .list('', { limit: 1 });
     
     if (!accessError) {
       console.log('✅ Bucket exists and is accessible');
+      
+      // Check if bucket is properly configured for public access
+      const testFileName = 'test-public-access.txt';
+      const testContent = new Blob(['test'], { type: 'text/plain' });
+      
+      // Try uploading a test file
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('vehicle-images')
+        .upload(testFileName, testContent, { upsert: true });
+      
+      if (!uploadError) {
+        // Try getting public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('vehicle-images')
+          .getPublicUrl(testFileName);
+        
+        console.log('🔗 Test public URL:', publicUrl);
+        
+        // Test accessibility
+        try {
+          const response = await fetch(publicUrl);
+          console.log('📡 Public access test:', response.status);
+          
+          if (response.ok) {
+            console.log('✅ Bucket is properly configured for public access');
+          } else {
+            console.warn('⚠️ Bucket may not be configured for public access');
+          }
+        } catch (e) {
+          console.warn('⚠️ Public access test failed:', e.message);
+        }
+        
+        // Clean up test file
+        await supabase.storage
+          .from('vehicle-images')
+          .remove([testFileName])
+          .catch(() => {});
+      }
+      
       return { success: true, message: 'Bucket exists and is accessible' };
     }
     
     console.log('🔨 Creating storage bucket...');
     
-    const { data, error: createError } = await supabase.storage.createBucket('vehicle-images', {
+    // Create bucket with proper public settings
+    const { data: bucketData, error: createError } = await supabase.storage.createBucket('vehicle-images', {
       public: true,
       allowedMimeTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'],
-      fileSizeLimit: 52428800 // 50MB
+      fileSizeLimit: 52428800, // 50MB
+      transformations: {
+        allowedTransformations: ['resize', 'quality']
+      }
     });
     
     if (createError) {
@@ -715,11 +775,23 @@ export const ensureStorageBucket = async () => {
         console.log('✅ Bucket already exists');
         return { success: true, message: 'Bucket already exists' };
       }
+      console.error('❌ Failed to create bucket:', createError);
       throw createError;
     }
     
     console.log('✅ Successfully created bucket');
-    return { success: true, message: 'Successfully created bucket' };
+    
+    // Verify the bucket was created properly
+    const { data: verifyFiles, error: verifyError } = await supabase.storage
+      .from('vehicle-images')
+      .list('', { limit: 1 });
+    
+    if (verifyError) {
+      console.error('❌ Bucket verification failed:', verifyError);
+      return { success: false, error: 'Bucket created but not accessible' };
+    }
+    
+    return { success: true, message: 'Successfully created and verified bucket' };
   } catch (error) {
     console.error('❌ Bucket setup error:', error);
     return { success: false, error: error.message || 'Failed to setup bucket' };
@@ -832,28 +904,62 @@ export const cleanSlateRepair = async () => {
   }
 };
 
-// Storage diagnostics
+// ENHANCED: Storage diagnostics with better debugging
 export const checkStorageConfig = async () => {
   try {
+    console.log('🔍 Checking storage configuration...');
+    console.log('Supabase URL:', supabaseUrl);
+    console.log('Anon Key present:', !!supabaseAnonKey);
+    
     if (!supabaseUrl || !supabaseAnonKey) {
       return { success: false, error: 'Missing environment variables' };
     }
     
-    const { data: files, error } = await supabase.storage
+    // Test bucket access
+    const { data: files, error: listError } = await supabase.storage
       .from('vehicle-images')
-      .list('', { limit: 1 });
+      .list('', { limit: 10 });
     
-    if (error) {
-      return { success: false, error: error.message };
+    if (listError) {
+      console.error('❌ Bucket access error:', listError);
+      return { success: false, error: listError.message };
+    }
+    
+    console.log('✅ Bucket accessible, files found:', files?.length || 0);
+    
+    // Test public URL generation
+    let testUrl = null;
+    if (files && files.length > 0) {
+      const { data: { publicUrl } } = supabase.storage
+        .from('vehicle-images')
+        .getPublicUrl(files[0].name);
+      
+      testUrl = publicUrl;
+      console.log('🔗 Sample public URL:', publicUrl);
+      
+      // Test if the URL is actually accessible
+      try {
+        const response = await fetch(publicUrl, { method: 'HEAD' });
+        console.log('📡 URL test response:', response.status, response.statusText);
+      } catch (fetchError) {
+        console.warn('⚠️ URL test failed:', fetchError.message);
+      }
     }
     
     return {
       success: true,
       message: 'Storage configuration valid',
-      bucket: { name: 'vehicle-images', public: true },
-      fileCount: files?.length || 0
+      bucket: { 
+        name: 'vehicle-images', 
+        public: true,
+        url: `${supabaseUrl}/storage/v1/object/public/vehicle-images/`
+      },
+      fileCount: files?.length || 0,
+      sampleUrl: testUrl,
+      files: files?.slice(0, 5) || []
     };
   } catch (error) {
+    console.error('❌ Storage config check failed:', error);
     return { success: false, error: error.message };
   }
 };

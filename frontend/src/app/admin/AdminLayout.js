@@ -1,4 +1,4 @@
-// frontend/src/app/admin/AdminLayout.js
+// frontend/src/app/admin/AdminLayout.js - UPDATED WITH DEBUG MENU
 "use client";
 
 import { useState, useEffect } from "react";
@@ -113,6 +113,44 @@ export default function AdminLayout({ children }) {
       icon: "⚙️",
       href: "/admin/settings",
       active: pathname.startsWith("/admin/settings")
+    },
+    // Debug Section
+    {
+      title: "── DEBUG ──",
+      icon: "",
+      href: "#",
+      active: false,
+      isHeader: true
+    },
+    {
+      title: "Image Upload Test",
+      icon: "🧪",
+      href: "/admin/test-image",
+      active: pathname.startsWith("/admin/test-image")
+    },
+    {
+      title: "Vehicle Images Debug",
+      icon: "🔍",
+      href: "/admin/debug-vehicle-images",
+      active: pathname.startsWith("/admin/debug-vehicle-images")
+    },
+    {
+      title: "Storage URL Test",
+      icon: "🗂️",
+      href: "/admin/storage-test",
+      active: pathname.startsWith("/admin/storage-test")
+    },
+    {
+      title: "Image Diagnostics",
+      icon: "🔧",
+      href: "/admin/debug-images",
+      active: pathname.startsWith("/admin/debug-images")
+    },
+    {
+      title: "Storage Diagnostic",
+      icon: "📊",
+      href: "/admin/storage-diagnostic",
+      active: pathname.startsWith("/admin/storage-diagnostic")
     }
   ];
 
@@ -172,25 +210,41 @@ export default function AdminLayout({ children }) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4">
+        <nav className="flex-1 p-4 overflow-y-auto">
           <ul className="space-y-2">
-            {menuItems.map((item, index) => (
-              <li key={index}>
-                <Link
-                  href={item.href}
-                  className={`flex items-center px-4 py-3 rounded-lg transition-colors ${
-                    item.active 
-                      ? 'bg-blue-600 text-white' 
-                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                  }`}
-                >
-                  <span className="text-xl">{item.icon}</span>
-                  {sidebarOpen && (
-                    <span className="ml-3">{item.title}</span>
-                  )}
-                </Link>
-              </li>
-            ))}
+            {menuItems.map((item, index) => {
+              if (item.isHeader) {
+                return sidebarOpen ? (
+                  <li key={index} className="py-2">
+                    <div className="text-xs text-gray-500 font-semibold uppercase tracking-wider">
+                      {item.title}
+                    </div>
+                  </li>
+                ) : (
+                  <li key={index} className="py-2">
+                    <div className="border-t border-gray-700"></div>
+                  </li>
+                );
+              }
+              
+              return (
+                <li key={index}>
+                  <Link
+                    href={item.href}
+                    className={`flex items-center px-4 py-3 rounded-lg transition-colors ${
+                      item.active 
+                        ? 'bg-blue-600 text-white' 
+                        : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                    }`}
+                  >
+                    <span className="text-xl">{item.icon}</span>
+                    {sidebarOpen && (
+                      <span className="ml-3">{item.title}</span>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
 
@@ -232,6 +286,15 @@ export default function AdminLayout({ children }) {
                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
               >
                 + Add Vehicle
+              </Link>
+              
+              {/* Debug Quick Access */}
+              <Link
+                href="/admin/debug-vehicle-images"
+                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                title="Debug Vehicle Images"
+              >
+                🔍 Debug
               </Link>
               
               {/* Notifications */}

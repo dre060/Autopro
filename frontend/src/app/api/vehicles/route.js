@@ -2,6 +2,10 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+// frontend/src/app/api/vehicles/route.js - ENHANCED DEBUG VERSION
+import { NextResponse } from 'next/server';
+import { supabase } from '@/lib/supabase';
+
 export async function GET(request) {
   try {
     console.log('🔍 API: Fetching vehicles...');
@@ -69,34 +73,45 @@ export async function GET(request) {
       );
     }
 
-    // SIMPLIFIED: Process images for each vehicle
-    const processedVehicles = (data || []).map(vehicle => {
-      console.log(`Processing vehicle ${vehicle.id} images:`, vehicle.images);
+    // ENHANCED: Process images with detailed debugging
+    const processedVehicles = (data || []).map((vehicle, vehicleIndex) => {
+      console.log(`\n🚗 API: Processing vehicle ${vehicleIndex + 1}: ${vehicle.year} ${vehicle.make} ${vehicle.model}`);
+      console.log('Raw images data:', vehicle.images);
+      console.log('Raw images type:', typeof vehicle.images);
       
       // Ensure images is always an array
       let imageArray = [];
       
       if (Array.isArray(vehicle.images)) {
         imageArray = vehicle.images;
+        console.log('✅ Images already an array:', imageArray.length, 'items');
       } else if (typeof vehicle.images === 'string') {
         try {
           imageArray = JSON.parse(vehicle.images);
           if (!Array.isArray(imageArray)) {
             imageArray = [imageArray];
           }
+          console.log('✅ Parsed string to array:', imageArray.length, 'items');
         } catch (e) {
-          console.warn(`Failed to parse images for vehicle ${vehicle.id}:`, e);
+          console.warn(`❌ Failed to parse images for vehicle ${vehicle.id}:`, e);
           imageArray = [];
         }
       } else if (vehicle.images && typeof vehicle.images === 'object') {
         imageArray = [vehicle.images];
+        console.log('✅ Converted object to array');
+      } else {
+        console.log('⚠️ No valid images found, will use fallback');
       }
       
-      // Process each image with proper URL cleaning
+      // Process each image with enhanced debugging
       const validImages = [];
       
       if (Array.isArray(imageArray) && imageArray.length > 0) {
+        console.log(`📷 Processing ${imageArray.length} images...`);
+        
         imageArray.forEach((img, index) => {
+          console.log(`  Image ${index + 1}:`, img);
+          
           let imageUrl = null;
           let alt = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
           let isPrimary = index === 0;
@@ -104,56 +119,70 @@ export async function GET(request) {
           
           if (typeof img === 'string') {
             imageUrl = img;
+            console.log(`    String URL: ${imageUrl}`);
           } else if (img && typeof img === 'object') {
             imageUrl = img.url || img.publicUrl || img.src;
             alt = img.alt || alt;
             isPrimary = img.isPrimary !== undefined ? img.isPrimary : isPrimary;
             fileName = img.fileName;
+            console.log(`    Object URL: ${imageUrl}`);
+            console.log(`    Alt: ${alt}`);
+            console.log(`    Primary: ${isPrimary}`);
           }
           
-          // Basic URL validation - be more permissive
+          // Enhanced URL validation with debugging
           if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
             const cleanedUrl = imageUrl.trim();
+            console.log(`    Cleaned URL: ${cleanedUrl}`);
             
             // Check if it's a valid URL structure
             const isValidUrl = cleanedUrl.startsWith('http://') || 
                              cleanedUrl.startsWith('https://') || 
                              cleanedUrl.startsWith('/');
             
+            console.log(`    Valid URL structure: ${isValidUrl}`);
+            
             if (isValidUrl) {
-              validImages.push({
+              const imageObj = {
                 url: cleanedUrl,
                 alt: alt || 'Vehicle Image',
                 isPrimary,
                 fileName
-              });
+              };
               
-              console.log(`✅ Added image for vehicle ${vehicle.id}:`, cleanedUrl);
+              validImages.push(imageObj);
+              console.log(`    ✅ Added image:`, imageObj);
             } else {
-              console.warn(`❌ Invalid URL structure for vehicle ${vehicle.id}:`, cleanedUrl);
+              console.warn(`    ❌ Invalid URL structure:`, cleanedUrl);
             }
+          } else {
+            console.warn(`    ❌ No valid URL found for image ${index + 1}`);
           }
         });
+      } else {
+        console.log('⚠️ No images array to process');
       }
       
       // Ensure at least one image (fallback)
       if (validImages.length === 0) {
-        validImages.push({
+        const fallbackImage = {
           url: '/hero.jpg',
           alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
           isPrimary: true,
           isFallback: true
-        });
-        console.log(`Using fallback image for vehicle ${vehicle.id}`);
+        };
+        validImages.push(fallbackImage);
+        console.log(`🔄 Using fallback image for vehicle ${vehicle.id}`);
       }
       
       // Ensure at least one primary image
       if (!validImages.some(img => img.isPrimary)) {
         validImages[0].isPrimary = true;
+        console.log('🔧 Set first image as primary');
       }
       
       vehicle.images = validImages;
-      console.log(`Final images for vehicle ${vehicle.id}:`, validImages);
+      console.log(`✅ Final images for vehicle ${vehicle.id}:`, validImages);
       
       return vehicle;
     });
