@@ -3,7 +3,15 @@
 
 import { useState, useEffect } from "react";
 import AdminLayout from "../AdminLayout";
-import { supabase } from "@/lib/supabase";
+import { 
+  supabase, 
+  repairVehicleImages, 
+  cleanupCorruptedImages,
+  checkStorageConfig,
+  setupStorageBucket,
+  testImageUpload,
+  cleanupTestFiles
+} from "@/lib/supabase";
 
 export default function StorageDiagnostic() {
   const [bucketFiles, setBucketFiles] = useState([]);
@@ -13,6 +21,35 @@ export default function StorageDiagnostic() {
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [fixResults, setFixResults] = useState([]);
   const [fixing, setFixing] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [results, setResults] = useState({});
+
+  const addLog = (message, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = { timestamp, message, type };
+    setLogs(prev => [...prev, logEntry]);
+    
+    // Also log to console with appropriate level
+    const consoleLog = `[${timestamp}] ${message}`;
+    switch(type) {
+      case 'error':
+        console.error(consoleLog);
+        break;
+      case 'success':
+        console.log(`✅ ${consoleLog}`);
+        break;
+      case 'warning':
+        console.warn(`⚠️ ${consoleLog}`);
+        break;
+      default:
+        console.log(consoleLog);
+    }
+  };
+
+  const clearLogs = () => {
+    setLogs([]);
+    console.clear();
+  };
 
   useEffect(() => {
     loadDiagnosticData();
@@ -20,6 +57,8 @@ export default function StorageDiagnostic() {
 
   const loadDiagnosticData = async () => {
     setLoading(true);
+    addLog('Loading diagnostic data...', 'info');
+    
     try {
       // 1. Get all files from storage bucket
       const { data: files, error: filesError } = await supabase.storage
@@ -28,8 +67,10 @@ export default function StorageDiagnostic() {
       
       if (filesError) {
         setError(`Failed to list bucket files: ${filesError.message}`);
+        addLog(`Failed to list bucket files: ${filesError.message}`, 'error');
       } else {
         setBucketFiles(files || []);
+        addLog(`Found ${files?.length || 0} files in storage bucket`, 'info');
       }
 
       // 2. Get all vehicles from database
@@ -40,413 +81,253 @@ export default function StorageDiagnostic() {
       
       if (vehiclesError) {
         setError(`Failed to load vehicles: ${vehiclesError.message}`);
+        addLog(`Failed to load vehicles: ${vehiclesError.message}`, 'error');
       } else {
         setVehicles(vehicleData || []);
+        addLog(`Loaded ${vehicleData?.length || 0} vehicles from database`, 'info');
       }
     } catch (err) {
       setError(`Diagnostic error: ${err.message}`);
+      addLog(`Diagnostic error: ${err.message}`, 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const checkImageStatus = (imageUrl) => {
-    if (!imageUrl) return { status: 'missing', message: 'No URL provided' };
-    
-    // Handle empty strings
-    if (imageUrl === '') return { status: 'missing', message: 'Empty URL' };
-    
-    // Extract filename from URL
-    const urlParts = imageUrl.split('/');
-    const filename = urlParts[urlParts.length - 1];
-    
-    // Check if file exists in bucket
-    const fileExists = bucketFiles.some(file => file.name === filename);
-    
-    return {
-      status: fileExists ? 'exists' : 'not-found',
-      message: fileExists ? 'File exists in bucket' : 'File NOT found in bucket',
-      filename
-    };
-  };
-
-  // FIXED: Enhanced quick fix function that properly handles broken images
-  const quickFixVehicle = async (vehicle) => {
-    setFixing(true);
-    setError("");
-    
-    try {
-      console.log(`Fixing vehicle ${vehicle.id}...`);
-      
-      // Step 1: Create a test image
-      const canvas = document.createElement('canvas');
-      canvas.width = 800;
-      canvas.height = 600;
-      const ctx = canvas.getContext('2d');
-      
-      // Create gradient background
-      const gradient = ctx.createLinearGradient(0, 0, 800, 600);
-      gradient.addColorStop(0, '#1e40af');
-      gradient.addColorStop(1, '#3b82f6');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 800, 600);
-      
-      // Add text
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 48px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`${vehicle.year} ${vehicle.make} ${vehicle.model}`, 400, 250);
-      
-      ctx.font = '24px Arial';
-      ctx.fillText(`Stock #: ${vehicle.stock_number || 'N/A'}`, 400, 320);
-      ctx.fillText(`Price: $${vehicle.price?.toLocaleString() || 'N/A'}`, 400, 370);
-      
-      // Convert to blob
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
-      
-      if (!blob) {
-        throw new Error('Failed to create image blob');
-      }
-      
-      const fileName = `vehicle-${vehicle.id}-${Date.now()}.jpg`;
-      
-      console.log(`Uploading ${fileName}...`);
-      
-      // Step 2: Upload to Supabase
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('vehicle-images')
-        .upload(fileName, blob, {
-          contentType: 'image/jpeg',
-          cacheControl: '3600',
-          upsert: false
-        });
-      
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        
-        // Fallback: Use hero.jpg if upload fails
-        const fallbackResult = await supabase
-          .from('vehicles')
-          .update({ 
-            images: [{
-              url: '/hero.jpg',
-              alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-              isPrimary: true
-            }]
-          })
-          .eq('id', vehicle.id);
-        
-        if (fallbackResult.error) {
-          throw fallbackResult.error;
-        }
-        
-        alert(`✅ Added fallback image for ${vehicle.year} ${vehicle.make} ${vehicle.model}`);
-        await loadDiagnosticData();
-        return;
-      }
-      
-      // Step 3: Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('vehicle-images')
-        .getPublicUrl(fileName);
-      
-      console.log('Public URL:', publicUrl);
-      
-      // Step 4: Update vehicle record with proper structure
-      const { error: updateError } = await supabase
-        .from('vehicles')
-        .update({ 
-          images: [{
-            url: publicUrl,
-            alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-            isPrimary: true,
-            fileName: fileName
-          }]
-        })
-        .eq('id', vehicle.id);
-      
-      if (updateError) {
-        throw updateError;
-      }
-      
-      alert(`✅ Successfully fixed images for ${vehicle.year} ${vehicle.make} ${vehicle.model}`);
-      await loadDiagnosticData();
-      
-    } catch (error) {
-      console.error('Fix error:', error);
-      alert(`❌ Error: ${error.message}`);
-    } finally {
-      setFixing(false);
-    }
-  };
-
-  // FIXED: Fix all broken images with better handling
-  const fixAllBrokenImages = async () => {
-    setFixResults([]);
-    setError("");
-    setFixing(true);
-    
-    try {
-      // Find vehicles with broken images
-      const vehiclesWithBrokenImages = vehicles.filter(v => {
-        if (!v.images || v.images.length === 0) return false;
-        return v.images.some(img => {
-          // Check if image object exists but has no URL or empty URL
-          return !img || !img.url || img.url === '';
-        });
-      });
-      
-      console.log(`Found ${vehiclesWithBrokenImages.length} vehicles with broken images`);
-      
-      if (vehiclesWithBrokenImages.length === 0) {
-        alert('No broken images found to fix!');
-        return;
-      }
-      
-      if (!confirm(`Fix ${vehiclesWithBrokenImages.length} vehicles with broken images?`)) {
-        return;
-      }
-      
-      for (const vehicle of vehiclesWithBrokenImages) {
-        console.log(`Fixing vehicle ${vehicle.id}...`);
-        
-        try {
-          // Create placeholder image
-          const canvas = document.createElement('canvas');
-          canvas.width = 800;
-          canvas.height = 600;
-          const ctx = canvas.getContext('2d');
-          
-          // Simple gradient background
-          const gradient = ctx.createLinearGradient(0, 0, 800, 600);
-          gradient.addColorStop(0, '#1e3a8a');
-          gradient.addColorStop(1, '#3b82f6');
-          ctx.fillStyle = gradient;
-          ctx.fillRect(0, 0, 800, 600);
-          
-          // Add text
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 48px Arial';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(`${vehicle.year} ${vehicle.make} ${vehicle.model}`, 400, 280);
-          ctx.font = '24px Arial';
-          ctx.fillText('Placeholder Image', 400, 340);
-          
-          // Convert to blob
-          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
-          
-          const fileName = `vehicle-${vehicle.id}-${Date.now()}.jpg`;
-          
-          // Upload to Supabase
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('vehicle-images')
-            .upload(fileName, blob, {
-              contentType: 'image/jpeg',
-              cacheControl: '3600'
-            });
-          
-          if (uploadError) {
-            throw uploadError;
-          }
-          
-          // Get public URL
-          const { data: { publicUrl } } = supabase.storage
-            .from('vehicle-images')
-            .getPublicUrl(fileName);
-          
-          // Update vehicle
-          const { error: updateError } = await supabase
-            .from('vehicles')
-            .update({ 
-              images: [{
-                url: publicUrl,
-                alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-                isPrimary: true,
-                fileName: fileName
-              }]
-            })
-            .eq('id', vehicle.id);
-          
-          if (updateError) {
-            throw updateError;
-          }
-          
-          setFixResults(prev => [...prev, {
-            vehicleId: vehicle.id,
-            vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-            success: true,
-            message: 'Successfully fixed'
-          }]);
-          
-        } catch (error) {
-          console.error(`Error fixing vehicle ${vehicle.id}:`, error);
-          
-          // Try fallback image as last resort
-          try {
-            await supabase
-              .from('vehicles')
-              .update({ 
-                images: [{
-                  url: '/hero.jpg',
-                  alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-                  isPrimary: true
-                }]
-              })
-              .eq('id', vehicle.id);
-            
-            setFixResults(prev => [...prev, {
-              vehicleId: vehicle.id,
-              vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-              success: true,
-              message: 'Used fallback image'
-            }]);
-          } catch (fallbackError) {
-            setFixResults(prev => [...prev, {
-              vehicleId: vehicle.id,
-              vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-              success: false,
-              error: error.message
-            }]);
-          }
-        }
-      }
-      
-      // Reload data after fixes
-      setTimeout(() => {
-        loadDiagnosticData();
-      }, 2000);
-      
-    } catch (error) {
-      console.error('Error in fixAllBrokenImages:', error);
-      setError(`Failed to fix broken images: ${error.message}`);
-    } finally {
-      setFixing(false);
-    }
-  };
-
-  // FIXED: Force fix for specific Toyota Camry
-  const forceFix2025Camry = async () => {
-    const camry = vehicles.find(v => v.id === '411138ea-874b-42f5-a234-7c8df83d3af3');
-    if (!camry) {
-      alert('2025 Toyota Camry not found!');
-      return;
+  const analyzeImageHealth = (vehicle) => {
+    if (!vehicle.images || !Array.isArray(vehicle.images) || vehicle.images.length === 0) {
+      return { status: 'no-images', message: 'No images found' };
     }
     
-    setFixing(true);
-    try {
-      console.log('Force fixing 2025 Toyota Camry...');
-      
-      // Option 1: Try to upload a new image
-      try {
-        const fileName = `camry-${Date.now()}.jpg`;
-        
-        // Create a simple test blob
-        const response = await fetch('/hero.jpg');
-        const blob = await response.blob();
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('vehicle-images')
-          .upload(fileName, blob);
-        
-        if (!uploadError) {
-          const { data: { publicUrl } } = supabase.storage
-            .from('vehicle-images')
-            .getPublicUrl(fileName);
-          
-          await supabase
-            .from('vehicles')
-            .update({ 
-              images: [{
-                url: publicUrl,
-                alt: '2025 Toyota Camry',
-                isPrimary: true,
-                fileName: fileName
-              }]
-            })
-            .eq('id', camry.id);
-          
-          alert('✅ Successfully uploaded new image for 2025 Toyota Camry!');
-          await loadDiagnosticData();
-          return;
-        }
-      } catch (uploadErr) {
-        console.error('Upload attempt failed:', uploadErr);
-      }
-      
-      // Option 2: Force fallback image
-      const { error } = await supabase
-        .from('vehicles')
-        .update({ 
-          images: [{
-            url: '/hero.jpg',
-            alt: '2025 Toyota Camry',
-            isPrimary: true
-          }]
-        })
-        .eq('id', camry.id);
-      
-      if (error) throw error;
-      
-      alert('✅ Successfully added fallback image to 2025 Toyota Camry!');
-      await loadDiagnosticData();
-      
-    } catch (error) {
-      alert(`❌ Error: ${error.message}`);
-    } finally {
-      setFixing(false);
-    }
-  };
-
-  // Clean orphaned files
-  const deleteOrphanedFiles = async () => {
-    const referencedFiles = new Set();
+    let brokenCount = 0;
+    let validCount = 0;
     
-    vehicles.forEach(vehicle => {
-      if (vehicle.images && Array.isArray(vehicle.images)) {
-        vehicle.images.forEach(image => {
-          if (image.fileName) {
-            referencedFiles.add(image.fileName);
-          } else if (image.url) {
-            const filename = image.url.split('/').pop();
-            referencedFiles.add(filename);
-          }
-        });
+    vehicle.images.forEach(img => {
+      const url = typeof img === 'string' ? img : (img?.url || img?.publicUrl);
+      
+      if (!url || url === '') {
+        brokenCount++;
+      } else if (url.length > 500) {
+        brokenCount++; // Extremely long URLs are likely corrupted
+      } else if (!url.includes('.jpg') && !url.includes('.jpeg') && !url.includes('.png') && !url.includes('.webp')) {
+        brokenCount++; // No valid image extension
+      } else {
+        validCount++;
       }
     });
     
-    const orphanedFiles = bucketFiles.filter(file => !referencedFiles.has(file.name));
-    
-    if (orphanedFiles.length === 0) {
-      alert('No orphaned files found');
-      return;
+    if (brokenCount > 0) {
+      return { 
+        status: 'broken', 
+        message: `${brokenCount} broken image(s), ${validCount} valid`,
+        brokenCount,
+        validCount
+      };
     }
     
-    if (confirm(`Delete ${orphanedFiles.length} orphaned files?`)) {
-      const filenames = orphanedFiles.map(f => f.name);
-      const { error } = await supabase.storage
-        .from('vehicle-images')
-        .remove(filenames);
+    return { status: 'healthy', message: `${validCount} valid image(s)` };
+  };
+
+  // FIXED: Quick repair function for specific vehicle
+  const quickRepairVehicle = async (vehicle) => {
+    setFixing(true);
+    addLog(`Starting repair for ${vehicle.year} ${vehicle.make} ${vehicle.model}...`, 'info');
+    
+    try {
+      const result = await repairVehicleImages(vehicle.id);
       
-      if (error) {
-        alert(`Error deleting files: ${error.message}`);
-      } else {
-        alert(`Deleted ${orphanedFiles.length} orphaned files`);
+      if (result.success) {
+        addLog(`✅ Successfully repaired: ${result.message}`, 'success');
+        
+        // Reload data to show changes
         await loadDiagnosticData();
+        
+        // Show success message
+        alert(`✅ ${result.message}`);
+      } else {
+        addLog(`❌ Repair failed: ${result.error}`, 'error');
+        alert(`❌ Repair failed: ${result.error}`);
       }
+    } catch (error) {
+      addLog(`❌ Repair error: ${error.message}`, 'error');
+      alert(`❌ Repair error: ${error.message}`);
+    } finally {
+      setFixing(false);
     }
   };
 
+  // FIXED: Repair all corrupted images
+  const repairAllCorruptedImages = async () => {
+    setFixing(true);
+    setFixResults([]);
+    addLog('Starting bulk repair of all corrupted images...', 'info');
+    
+    try {
+      const result = await cleanupCorruptedImages();
+      
+      if (result.success) {
+        addLog(`✅ Bulk repair completed: ${result.message}`, 'success');
+        setFixResults(result.repairedVehicles || []);
+        
+        // Reload data
+        await loadDiagnosticData();
+        
+        alert(`✅ ${result.message}`);
+      } else {
+        addLog(`❌ Bulk repair failed: ${result.error}`, 'error');
+        alert(`❌ Bulk repair failed: ${result.error}`);
+      }
+    } catch (error) {
+      addLog(`❌ Bulk repair error: ${error.message}`, 'error');
+      alert(`❌ Bulk repair error: ${error.message}`);
+    } finally {
+      setFixing(false);
+    }
+  };
+
+  // FIXED: Repair specific Toyota Camry
+  const repairToyotaCamry = async () => {
+    const camryId = '411138ea-874b-42f5-a234-7c8df83d3af3';
+    const camry = vehicles.find(v => v.id === camryId);
+    
+    if (!camry) {
+      addLog('❌ Toyota Camry not found in database', 'error');
+      alert('❌ Toyota Camry not found in database');
+      return;
+    }
+    
+    addLog(`🚗 Starting targeted repair for Toyota Camry (ID: ${camryId})...`, 'info');
+    
+    setFixing(true);
+    
+    try {
+      const result = await repairVehicleImages(camryId);
+      
+      if (result.success) {
+        addLog(`✅ Toyota Camry repair successful: ${result.message}`, 'success');
+        
+        // Reload data
+        await loadDiagnosticData();
+        
+        alert(`✅ Toyota Camry repair successful!\n\nNew image URL: ${result.newImageUrl}`);
+      } else {
+        addLog(`❌ Toyota Camry repair failed: ${result.error}`, 'error');
+        alert(`❌ Toyota Camry repair failed: ${result.error}`);
+      }
+    } catch (error) {
+      addLog(`❌ Toyota Camry repair error: ${error.message}`, 'error');
+      alert(`❌ Toyota Camry repair error: ${error.message}`);
+    } finally {
+      setFixing(false);
+    }
+  };
+
+  // Run test function
+  const runTest = async (testName, testFunction) => {
+    const loadingState = { ...loading };
+    loadingState[testName] = true;
+    setLoading(loadingState);
+    
+    addLog(`🚀 Starting ${testName}...`, 'info');
+    
+    try {
+      const result = await testFunction();
+      setResults(prev => ({ ...prev, [testName]: result }));
+      
+      if (result && result.success) {
+        addLog(`✅ ${testName} completed successfully: ${result.message || 'OK'}`, 'success');
+      } else {
+        const errorMsg = result?.error || 'Unknown error occurred';
+        addLog(`❌ ${testName} failed: ${errorMsg}`, 'error');
+      }
+      
+      return result;
+    } catch (error) {
+      const errorMsg = error?.message || error || 'Unexpected error';
+      addLog(`💥 ${testName} threw error: ${errorMsg}`, 'error');
+      setResults(prev => ({ ...prev, [testName]: { success: false, error: errorMsg } }));
+      return { success: false, error: errorMsg };
+    } finally {
+      const loadingState = { ...loading };
+      loadingState[testName] = false;
+      setLoading(loadingState);
+    }
+  };
+
+  // Test functions
+  const testStorageConfig = () => runTest('Storage Config', checkStorageConfig);
+  const testBucketSetup = () => runTest('Bucket Setup', setupStorageBucket);
+  const testImageUploadFunc = () => runTest('Image Upload', testImageUpload);
+  const testCleanup = () => runTest('Cleanup Test Files', cleanupTestFiles);
+
+  // Calculate statistics
+  const totalVehicles = vehicles.length;
+  const vehiclesWithImages = vehicles.filter(v => v.images && Array.isArray(v.images) && v.images.length > 0).length;
+  const brokenVehicles = vehicles.filter(v => analyzeImageHealth(v).status === 'broken').length;
+  const healthyVehicles = vehicles.filter(v => analyzeImageHealth(v).status === 'healthy').length;
+
+  // Component for displaying test results
+  const ResultCard = ({ title, result, isLoading, testKey }) => (
+    <div className={`p-6 rounded-lg border transition-all duration-300 ${
+      !result ? 'bg-gray-50 border-gray-200' :
+      result.success ? 'bg-green-50 border-green-200 shadow-md' :
+      'bg-red-50 border-red-200 shadow-md'
+    }`}>
+      <h3 className="font-bold mb-3 flex items-center gap-2 text-lg">
+        {title}
+        {isLoading && (
+          <div className="animate-spin w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+        )}
+      </h3>
+      
+      {!result ? (
+        <p className="text-gray-500">Not tested yet</p>
+      ) : result.success ? (
+        <div className="space-y-2">
+          <p className="text-green-700 font-medium flex items-center gap-2">
+            <span className="text-green-500">✅</span> Success
+          </p>
+          {result.message && (
+            <p className="text-sm text-gray-600 bg-white p-2 rounded border">{result.message}</p>
+          )}
+          {result.url && (
+            <div className="mt-3">
+              <p className="text-xs font-medium text-gray-500 mb-1">Generated URL:</p>
+              <div className="bg-white p-2 rounded border">
+                <a 
+                  href={result.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 break-all hover:underline"
+                >
+                  {result.url}
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div>
+          <p className="text-red-700 font-medium flex items-center gap-2">
+            <span className="text-red-500">❌</span> Failed
+          </p>
+          <p className="text-sm text-red-600 mt-2 bg-white p-2 rounded border">
+            {result.error || 'Unknown error occurred'}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <AdminLayout>
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto p-6">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            🔍 Storage Diagnostic Tool
+            🔧 Enhanced Storage Diagnostic & Repair Suite
           </h1>
           <p className="text-gray-600">
-            Diagnose and fix image storage issues
+            Comprehensive diagnostic and repair tools for vehicle image storage issues.
           </p>
         </div>
 
@@ -456,7 +337,7 @@ export default function StorageDiagnostic() {
           </div>
         )}
 
-        {/* Summary Cards */}
+        {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold mb-2">Storage Files</h3>
@@ -465,82 +346,146 @@ export default function StorageDiagnostic() {
           </div>
           
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold mb-2">Vehicles</h3>
-            <p className="text-3xl font-bold text-green-600">{vehicles.length}</p>
-            <p className="text-sm text-gray-500">Total vehicles</p>
+            <h3 className="text-lg font-semibold mb-2">Total Vehicles</h3>
+            <p className="text-3xl font-bold text-green-600">{totalVehicles}</p>
+            <p className="text-sm text-gray-500">In database</p>
           </div>
           
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold mb-2">With Images</h3>
-            <p className="text-3xl font-bold text-purple-600">
-              {vehicles.filter(v => v.images && v.images.length > 0).length}
-            </p>
-            <p className="text-sm text-gray-500">Vehicles with images</p>
+            <h3 className="text-lg font-semibold mb-2">Healthy Images</h3>
+            <p className="text-3xl font-bold text-green-600">{healthyVehicles}</p>
+            <p className="text-sm text-gray-500">Vehicles with valid images</p>
           </div>
           
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold mb-2">Broken Images</h3>
-            <p className="text-3xl font-bold text-red-600">
-              {vehicles.filter(v => {
-                if (!v.images || v.images.length === 0) return false;
-                return v.images.some(img => !img || !img.url || img.url === '');
-              }).length}
-            </p>
-            <p className="text-sm text-gray-500">Vehicles with broken images</p>
+            <p className="text-3xl font-bold text-red-600">{brokenVehicles}</p>
+            <p className="text-sm text-gray-500">Vehicles needing repair</p>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
-          <div className="flex gap-4 flex-wrap">
+        {/* Control Panel */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+            <span className="text-blue-600">🎮</span> Repair & Test Controls
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <button
               onClick={loadDiagnosticData}
               disabled={fixing}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg disabled:opacity-50"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
             >
               🔄 Refresh Data
             </button>
+            
             <button
-              onClick={fixAllBrokenImages}
+              onClick={repairToyotaCamry}
               disabled={fixing}
-              className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg disabled:opacity-50"
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
             >
-              🔧 Fix All Broken Images
+              🚗 Fix Toyota Camry
             </button>
+            
             <button
-              onClick={deleteOrphanedFiles}
+              onClick={repairAllCorruptedImages}
               disabled={fixing}
-              className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg disabled:opacity-50"
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
             >
-              🗑️ Clean Orphaned Files
+              🔧 Repair All Broken
             </button>
+            
             <button
-              onClick={forceFix2025Camry}
+              onClick={testCleanup}
               disabled={fixing}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg disabled:opacity-50"
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
             >
-              🚗 Force Fix 2025 Camry
+              🧹 Clean Test Files
             </button>
           </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+            <button
+              onClick={testStorageConfig}
+              disabled={fixing}
+              className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
+            >
+              🔍 Check Config
+            </button>
+            
+            <button
+              onClick={testBucketSetup}
+              disabled={fixing}
+              className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
+            >
+              🛠️ Setup Bucket
+            </button>
+            
+            <button
+              onClick={testImageUploadFunc}
+              disabled={fixing}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 text-sm"
+            >
+              📤 Test Upload
+            </button>
+            
+            <button
+              onClick={clearLogs}
+              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm"
+            >
+              🗑️ Clear Logs
+            </button>
+          </div>
+          
           {fixing && (
-            <p className="mt-4 text-blue-600 flex items-center gap-2">
-              <span className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></span>
-              Processing...
-            </p>
+            <div className="mt-4 flex items-center gap-2 text-blue-600">
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
+              <span>Processing repair operations...</span>
+            </div>
           )}
         </div>
 
-        {/* Fix Results */}
+        {/* Test Results Grid */}
+        <div className="grid lg:grid-cols-2 gap-6 mb-8">
+          <ResultCard 
+            title="🔍 Storage Configuration" 
+            result={results['Storage Config']} 
+            isLoading={loading['Storage Config']}
+            testKey="Storage Config"
+          />
+          <ResultCard 
+            title="🛠️ Bucket Setup" 
+            result={results['Bucket Setup']} 
+            isLoading={loading['Bucket Setup']}
+            testKey="Bucket Setup"
+          />
+          <ResultCard 
+            title="📤 Image Upload Test" 
+            result={results['Image Upload']} 
+            isLoading={loading['Image Upload']}
+            testKey="Image Upload"
+          />
+          <ResultCard 
+            title="🧹 Cleanup Test Files" 
+            result={results['Cleanup Test Files']} 
+            isLoading={loading['Cleanup Test Files']}
+            testKey="Cleanup Test Files"
+          />
+        </div>
+
+        {/* Repair Results */}
         {fixResults.length > 0 && (
           <div className="bg-white rounded-lg shadow p-6 mb-8">
-            <h2 className="text-xl font-bold mb-4">Fix Results</h2>
+            <h2 className="text-xl font-bold mb-4">🔧 Repair Results</h2>
             <div className="space-y-2">
               {fixResults.map((result, index) => (
-                <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
-                  <p className="font-semibold">{result.vehicle}</p>
-                  <p className={`text-sm ${result.success ? 'text-green-600' : 'text-red-600'}`}>
-                    {result.success ? '✓' : '✗'} {result.message || result.error}
+                <div key={index} className={`border-l-4 pl-4 py-2 ${
+                  result.status === 'repaired' ? 'border-green-500' : 'border-red-500'
+                }`}>
+                  <p className="font-semibold">{result.name}</p>
+                  <p className={`text-sm ${
+                    result.status === 'repaired' ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {result.status === 'repaired' ? '✅ Successfully repaired' : `❌ Failed: ${result.error}`}
                   </p>
                 </div>
               ))}
@@ -548,15 +493,49 @@ export default function StorageDiagnostic() {
           </div>
         )}
 
-        {/* Vehicle Details */}
+        {/* Debug Logs */}
+        <div className="bg-gray-900 text-green-400 p-6 rounded-lg mb-8">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-white font-bold flex items-center gap-2">
+              <span className="text-green-400">💻</span> Debug Logs
+            </h2>
+            <button
+              onClick={clearLogs}
+              className="text-gray-400 hover:text-white text-xs px-3 py-1 rounded bg-gray-800 hover:bg-gray-700 transition-colors"
+            >
+              Clear Logs
+            </button>
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {logs.length === 0 ? (
+              <p className="text-gray-500 italic">No logs yet... Run a test to see debug information.</p>
+            ) : (
+              <div className="space-y-1">
+                {logs.map((log, index) => (
+                  <div key={index} className={`text-sm ${
+                    log.type === 'error' ? 'text-red-400' :
+                    log.type === 'success' ? 'text-green-400' :
+                    log.type === 'warning' ? 'text-yellow-400' :
+                    'text-gray-300'
+                  }`}>
+                    <span className="text-gray-500 text-xs">[{log.timestamp}]</span> {log.message}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Vehicle Details Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="p-6 border-b">
-            <h2 className="text-xl font-bold">Vehicle Image Status</h2>
+            <h2 className="text-xl font-bold">Vehicle Image Health Analysis</h2>
           </div>
           
           {loading ? (
             <div className="p-12 text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading vehicles...</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -567,10 +546,10 @@ export default function StorageDiagnostic() {
                       Vehicle
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Images
+                      Image Count
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
+                      Health Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
@@ -579,13 +558,11 @@ export default function StorageDiagnostic() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {vehicles.map((vehicle) => {
-                    const hasImages = vehicle.images && vehicle.images.length > 0;
-                    const brokenImageCount = hasImages ? vehicle.images.filter(img => {
-                      return !img || !img.url || img.url === '';
-                    }).length : 0;
+                    const health = analyzeImageHealth(vehicle);
+                    const imageCount = vehicle.images ? vehicle.images.length : 0;
                     
                     return (
-                      <tr key={vehicle.id}>
+                      <tr key={vehicle.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
                             <div className="text-sm font-medium text-gray-900">
@@ -594,60 +571,46 @@ export default function StorageDiagnostic() {
                             <div className="text-sm text-gray-500">
                               ID: {vehicle.id}
                             </div>
+                            <div className="text-sm text-gray-500">
+                              Stock: {vehicle.stock_number || 'N/A'}
+                            </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          {hasImages ? (
-                            <div>
-                              <p className="text-sm text-gray-900">
-                                {vehicle.images.length} image(s)
-                              </p>
-                              {vehicle.images.map((img, i) => {
-                                const hasUrl = img && img.url && img.url !== '';
-                                return (
-                                  <div key={i} className="text-xs mt-1">
-                                    <span className={hasUrl ? 'text-green-600' : 'text-red-600'}>
-                                      {hasUrl ? '✓' : '✗'} Image {i + 1}: {hasUrl ? 'Has URL' : 'No URL'}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-500">No images</span>
-                          )}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {imageCount} image(s)
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {!hasImages ? (
-                            <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">
-                              No Images
-                            </span>
-                          ) : brokenImageCount > 0 ? (
-                            <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
-                              {brokenImageCount} Broken
-                            </span>
-                          ) : (
-                            <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
-                              All Good
-                            </span>
-                          )}
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            health.status === 'healthy' ? 'bg-green-100 text-green-800' :
+                            health.status === 'broken' ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {health.status === 'healthy' ? '✅ Healthy' :
+                             health.status === 'broken' ? '❌ Broken' :
+                             '⚠️ No Images'}
+                          </span>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {health.message}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <button
-                            onClick={() => setSelectedVehicle(vehicle)}
-                            className="text-blue-600 hover:text-blue-900 mr-3"
-                          >
-                            Details
-                          </button>
-                          {(brokenImageCount > 0 || !hasImages) && (
+                          <div className="flex gap-2">
                             <button
-                              onClick={() => quickFixVehicle(vehicle)}
-                              disabled={fixing}
-                              className="text-green-600 hover:text-green-900 disabled:opacity-50"
+                              onClick={() => setSelectedVehicle(vehicle)}
+                              className="text-blue-600 hover:text-blue-900"
                             >
-                              Fix Now
+                              Details
                             </button>
-                          )}
+                            {health.status !== 'healthy' && (
+                              <button
+                                onClick={() => quickRepairVehicle(vehicle)}
+                                disabled={fixing}
+                                className="text-green-600 hover:text-green-900 disabled:opacity-50"
+                              >
+                                Repair
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -676,7 +639,7 @@ export default function StorageDiagnostic() {
               
               <div className="space-y-4">
                 <div>
-                  <h4 className="font-semibold mb-2">Database Record:</h4>
+                  <h4 className="font-semibold mb-2">Database Record (Images):</h4>
                   <pre className="bg-gray-100 p-4 rounded text-xs overflow-x-auto">
                     {JSON.stringify(selectedVehicle.images, null, 2)}
                   </pre>
@@ -687,29 +650,31 @@ export default function StorageDiagnostic() {
                     <h4 className="font-semibold mb-2">Image Analysis:</h4>
                     <div className="space-y-2">
                       {selectedVehicle.images.map((img, i) => {
-                        const hasUrl = img && img.url && img.url !== '';
+                        const url = typeof img === 'string' ? img : (img?.url || img?.publicUrl);
+                        const isValid = url && url.length < 500 && (url.includes('.jpg') || url.includes('.jpeg') || url.includes('.png'));
+                        
                         return (
                           <div key={i} className="border rounded p-3">
                             <p className="text-sm font-medium">Image {i + 1}:</p>
                             <p className="text-xs text-gray-600 break-all">
-                              URL: {hasUrl ? img.url : 'No URL provided'}
+                              URL: {url || 'No URL provided'}
                             </p>
-                            <p className={`text-sm mt-1 ${hasUrl ? 'text-green-600' : 'text-red-600'}`}>
-                              Status: {hasUrl ? 'Has URL' : 'Missing URL'}
+                            <p className={`text-sm mt-1 ${isValid ? 'text-green-600' : 'text-red-600'}`}>
+                              Status: {isValid ? 'Valid' : 'Invalid/Corrupted'}
                             </p>
-                            {hasUrl && (
+                            {url && isValid && (
                               <div className="mt-2">
                                 <img 
-                                  src={img.url} 
-                                  alt="Test" 
-                                  className="w-32 h-24 object-cover border"
+                                  src={url} 
+                                  alt="Vehicle" 
+                                  className="w-32 h-24 object-cover border rounded"
                                   onError={(e) => {
                                     e.target.style.display = 'none';
                                     e.target.nextSibling.style.display = 'block';
                                   }}
                                 />
                                 <p className="text-xs text-red-600 mt-1" style={{display: 'none'}}>
-                                  Failed to load image
+                                  ❌ Failed to load image
                                 </p>
                               </div>
                             )}
@@ -723,13 +688,13 @@ export default function StorageDiagnostic() {
                 <div className="mt-4 flex gap-2">
                   <button
                     onClick={() => {
-                      quickFixVehicle(selectedVehicle);
+                      quickRepairVehicle(selectedVehicle);
                       setSelectedVehicle(null);
                     }}
                     disabled={fixing}
                     className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded disabled:opacity-50"
                   >
-                    Fix This Vehicle
+                    🔧 Repair This Vehicle
                   </button>
                   <button
                     onClick={() => setSelectedVehicle(null)}

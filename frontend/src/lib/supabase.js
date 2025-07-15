@@ -22,14 +22,40 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-// FIXED: Helper function to clean up URLs and remove double slashes
+// FIXED: Enhanced URL validation and cleaning
+const isValidImageUrl = (url) => {
+  if (!url || typeof url !== 'string') return false;
+  
+  // Check for valid image extensions
+  const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+  const hasValidExtension = validExtensions.some(ext => url.toLowerCase().includes(ext));
+  
+  // Check for reasonable URL length (extremely long URLs often indicate corruption)
+  const isReasonableLength = url.length < 500;
+  
+  // Check for valid URL structure
+  const isValidStructure = url.startsWith('http') || url.startsWith('/');
+  
+  return hasValidExtension && isReasonableLength && isValidStructure;
+};
+
+// FIXED: Clean and validate image URLs
 const cleanImageUrl = (url) => {
   if (!url || typeof url !== 'string') return null;
   
-  // Remove double slashes except for protocol
-  const cleaned = url.replace(/([^:]\/)\/+/g, '$1');
+  // First check if URL is valid
+  if (!isValidImageUrl(url)) {
+    console.warn('Invalid image URL detected:', url);
+    return null;
+  }
   
-  // Ensure it starts with http(s) or is a relative path
+  // Remove double slashes except for protocol
+  let cleaned = url.replace(/([^:]\/)\/+/g, '$1');
+  
+  // Remove any query parameters that might be corrupted
+  cleaned = cleaned.split('?')[0];
+  
+  // Ensure proper URL structure
   if (cleaned.startsWith('/') || cleaned.startsWith('http')) {
     return cleaned;
   }
@@ -37,7 +63,22 @@ const cleanImageUrl = (url) => {
   return null;
 };
 
-// FIXED: Enhanced image upload with proper URL generation
+// FIXED: Generate clean, simple filenames
+const generateCleanFilename = (originalName = '', vehicleId = '') => {
+  // Get file extension
+  const ext = originalName.split('.').pop().toLowerCase();
+  const validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+  const fileExt = validExtensions.includes(ext) ? ext : 'jpg';
+  
+  // Create simple, clean filename
+  const timestamp = Date.now();
+  const randomId = Math.random().toString(36).substring(2, 8);
+  const vehiclePrefix = vehicleId ? vehicleId.substring(0, 8) : 'vehicle';
+  
+  return `${vehiclePrefix}-${timestamp}-${randomId}.${fileExt}`;
+};
+
+// FIXED: Enhanced image upload with better filename generation
 export const uploadVehicleImages = async (images) => {
   const imageUrls = [];
   const errors = [];
@@ -51,18 +92,13 @@ export const uploadVehicleImages = async (images) => {
         throw new Error('Invalid image file');
       }
       
-      // Get file extension
-      const fileExt = image.name.split('.').pop().toLowerCase();
-      const allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-      
-      if (!allowedExtensions.includes(fileExt)) {
-        throw new Error(`Invalid file type: ${fileExt}`);
+      // Check file size (max 10MB)
+      if (image.size > 10 * 1024 * 1024) {
+        throw new Error('Image file too large (max 10MB)');
       }
       
-      // Generate unique filename with timestamp and random string
-      const timestamp = Date.now();
-      const randomString = Math.random().toString(36).substring(2);
-      const fileName = `vehicle-${timestamp}-${randomString}.${fileExt}`;
+      // Generate clean filename
+      const fileName = generateCleanFilename(image.name);
       
       console.log(`Uploading image ${i + 1}/${images.length}: ${fileName}`);
       
@@ -72,7 +108,7 @@ export const uploadVehicleImages = async (images) => {
         .upload(fileName, image, {
           cacheControl: '3600',
           upsert: false,
-          contentType: image.type || `image/${fileExt}`
+          contentType: image.type
         });
       
       if (uploadError) {
@@ -93,7 +129,7 @@ export const uploadVehicleImages = async (images) => {
         throw new Error('Failed to generate public URL');
       }
       
-      // Clean the URL to remove any double slashes
+      // Clean and validate the URL
       const cleanedUrl = cleanImageUrl(publicUrl);
       
       if (!cleanedUrl) {
@@ -119,21 +155,135 @@ export const uploadVehicleImages = async (images) => {
     }
   }
 
-  // Return results
-  if (imageUrls.length === 0 && errors.length > 0) {
-    return { 
-      data: null, 
-      error: new Error(`All uploads failed: ${errors.map(e => e.error).join(', ')}`) 
-    };
-  }
-  
   return { 
     data: imageUrls, 
     error: errors.length > 0 ? { partial: true, errors } : null 
   };
 };
 
-// FIXED: Enhanced vehicle fetching with better image validation and repair
+// FIXED: Repair function for broken vehicle images
+export const repairVehicleImages = async (vehicleId) => {
+  try {
+    console.log(`Repairing images for vehicle ${vehicleId}...`);
+    
+    // Get the vehicle
+    const { data: vehicle, error: fetchError } = await supabase
+      .from('vehicles')
+      .select('*')
+      .eq('id', vehicleId)
+      .single();
+    
+    if (fetchError) {
+      throw fetchError;
+    }
+    
+    // Create a high-quality placeholder image
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200;
+    canvas.height = 800;
+    const ctx = canvas.getContext('2d');
+    
+    // Create professional gradient background
+    const gradient = ctx.createLinearGradient(0, 0, 1200, 800);
+    gradient.addColorStop(0, '#1e3a8a');
+    gradient.addColorStop(0.5, '#3b82f6');
+    gradient.addColorStop(1, '#1e40af');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 1200, 800);
+    
+    // Add vehicle information
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 72px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Main vehicle text
+    const vehicleText = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+    ctx.fillText(vehicleText, 600, 350);
+    
+    // Additional details
+    ctx.font = '36px Arial';
+    ctx.fillText(`$${vehicle.price?.toLocaleString()}`, 600, 420);
+    
+    ctx.font = '28px Arial';
+    ctx.fillText(`${vehicle.mileage?.toLocaleString()} miles`, 600, 470);
+    
+    // Company branding
+    ctx.font = 'bold 42px Arial';
+    ctx.fillText('AUTO PRO REPAIRS', 600, 550);
+    
+    // Convert to blob
+    const blob = await new Promise(resolve => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.9);
+    });
+    
+    if (!blob) {
+      throw new Error('Failed to create image blob');
+    }
+    
+    // Generate clean filename
+    const fileName = generateCleanFilename('repaired.jpg', vehicleId);
+    
+    // Upload the new image
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('vehicle-images')
+      .upload(fileName, blob, {
+        contentType: 'image/jpeg',
+        cacheControl: '3600',
+        upsert: false
+      });
+    
+    if (uploadError) {
+      throw uploadError;
+    }
+    
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('vehicle-images')
+      .getPublicUrl(uploadData.path);
+    
+    const cleanedUrl = cleanImageUrl(publicUrl);
+    
+    if (!cleanedUrl) {
+      throw new Error('Failed to generate valid URL');
+    }
+    
+    // Create new image array with the repaired image
+    const newImages = [{
+      url: cleanedUrl,
+      alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+      isPrimary: true,
+      fileName: uploadData.path
+    }];
+    
+    // Update vehicle with new images
+    const { error: updateError } = await supabase
+      .from('vehicles')
+      .update({ images: newImages })
+      .eq('id', vehicleId);
+    
+    if (updateError) {
+      throw updateError;
+    }
+    
+    console.log(`✅ Successfully repaired images for vehicle ${vehicleId}`);
+    
+    return {
+      success: true,
+      message: `Successfully repaired images for ${vehicleText}`,
+      newImageUrl: cleanedUrl
+    };
+    
+  } catch (error) {
+    console.error('Error repairing vehicle images:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to repair images'
+    };
+  }
+};
+
+// FIXED: Enhanced vehicle fetching with aggressive image cleaning
 export const getVehicles = async (filters = {}) => {
   let query = supabase
     .from('vehicles')
@@ -168,82 +318,61 @@ export const getVehicles = async (filters = {}) => {
 
   const { data, error } = await query;
   
-  // FIXED: Enhanced image validation, cleaning, and repair
+  // FIXED: Aggressive image cleaning and validation
   if (data) {
     data.forEach(vehicle => {
-      // Initialize images array if not exists
-      if (!vehicle.images) {
+      // Initialize images array
+      if (!vehicle.images || !Array.isArray(vehicle.images)) {
         vehicle.images = [];
       }
-      // Convert string to array if needed
-      else if (typeof vehicle.images === 'string') {
-        try {
-          vehicle.images = JSON.parse(vehicle.images);
-        } catch (e) {
-          console.warn(`Failed to parse images for vehicle ${vehicle.id}`);
-          vehicle.images = [];
+      
+      // Clean and validate each image
+      const validImages = [];
+      
+      if (vehicle.images.length > 0) {
+        for (let i = 0; i < vehicle.images.length; i++) {
+          const img = vehicle.images[i];
+          let imageUrl = null;
+          
+          // Extract URL from different formats
+          if (typeof img === 'string') {
+            imageUrl = img;
+          } else if (img && typeof img === 'object') {
+            imageUrl = img.url || img.publicUrl;
+          }
+          
+          // Validate and clean URL
+          if (imageUrl && isValidImageUrl(imageUrl)) {
+            const cleanedUrl = cleanImageUrl(imageUrl);
+            if (cleanedUrl) {
+              validImages.push({
+                url: cleanedUrl,
+                alt: img?.alt || `${vehicle.year} ${vehicle.make} ${vehicle.model} - Image ${i + 1}`,
+                isPrimary: img?.isPrimary || validImages.length === 0,
+                fileName: img?.fileName
+              });
+            }
+          }
         }
       }
-      // Ensure it's an array
-      else if (!Array.isArray(vehicle.images)) {
-        vehicle.images = [];
-      }
       
-      // Validate, clean, and fix each image object
-      vehicle.images = vehicle.images
-        .map((img, index) => {
-          // Handle string URLs
-          if (typeof img === 'string') {
-            const cleanedUrl = cleanImageUrl(img);
-            if (!cleanedUrl) return null;
-            
-            return {
-              url: cleanedUrl,
-              alt: `${vehicle.year} ${vehicle.make} ${vehicle.model} - Image ${index + 1}`,
-              isPrimary: index === 0
-            };
-          }
-          
-          // Handle image objects
-          if (typeof img === 'object' && img !== null) {
-            // Get URL from various possible fields
-            let url = img.url || img.publicUrl || '';
-            
-            // Clean the URL
-            const cleanedUrl = cleanImageUrl(url);
-            
-            // Skip if no valid URL
-            if (!cleanedUrl) {
-              console.warn(`Invalid URL for image ${index + 1} in vehicle ${vehicle.id}: "${url}"`);
-              return null;
-            }
-            
-            return {
-              url: cleanedUrl,
-              alt: img.alt || `${vehicle.year} ${vehicle.make} ${vehicle.model} - Image ${index + 1}`,
-              isPrimary: img.isPrimary !== undefined ? img.isPrimary : index === 0,
-              fileName: img.fileName
-            };
-          }
-          
-          return null;
-        })
-        .filter(img => img !== null && img.url); // Remove invalid images
-      
-      // If no valid images, add a fallback
-      if (vehicle.images.length === 0) {
-        vehicle.images = [{
+      // If no valid images found, use fallback
+      if (validImages.length === 0) {
+        validImages.push({
           url: '/hero.jpg',
           alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
           isPrimary: true
-        }];
+        });
       }
+      
+      vehicle.images = validImages;
     });
   }
   
   return { data, error };
 };
 
+// FIXED: Enhanced vehicle by ID with same cleaning
 export const getVehicleById = async (id) => {
   const { data, error } = await supabase
     .from('vehicles')
@@ -251,60 +380,48 @@ export const getVehicleById = async (id) => {
     .eq('id', id)
     .single();
   
-  // Apply same image fixing logic
   if (data) {
-    if (!data.images) {
-      data.images = [];
-    } else if (typeof data.images === 'string') {
-      try {
-        data.images = JSON.parse(data.images);
-      } catch (e) {
-        data.images = [];
-      }
-    } else if (!Array.isArray(data.images)) {
+    // Apply same image cleaning logic
+    if (!data.images || !Array.isArray(data.images)) {
       data.images = [];
     }
     
-    // Clean and validate images
-    data.images = data.images
-      .map((img, index) => {
-        if (typeof img === 'string') {
-          const cleanedUrl = cleanImageUrl(img);
-          if (!cleanedUrl) return null;
-          
-          return {
-            url: cleanedUrl,
-            alt: `${data.year} ${data.make} ${data.model} - Image ${index + 1}`,
-            isPrimary: index === 0
-          };
-        }
-        
-        if (typeof img === 'object' && img !== null) {
-          const url = img.url || img.publicUrl || '';
-          const cleanedUrl = cleanImageUrl(url);
-          
-          if (!cleanedUrl) return null;
-          
-          return {
-            url: cleanedUrl,
-            alt: img.alt || `${data.year} ${data.make} ${data.model} - Image ${index + 1}`,
-            isPrimary: img.isPrimary !== undefined ? img.isPrimary : index === 0,
-            fileName: img.fileName
-          };
-        }
-        
-        return null;
-      })
-      .filter(img => img !== null);
+    const validImages = [];
     
-    // Add fallback if no images
-    if (data.images.length === 0) {
-      data.images = [{
+    if (data.images.length > 0) {
+      for (let i = 0; i < data.images.length; i++) {
+        const img = data.images[i];
+        let imageUrl = null;
+        
+        if (typeof img === 'string') {
+          imageUrl = img;
+        } else if (img && typeof img === 'object') {
+          imageUrl = img.url || img.publicUrl;
+        }
+        
+        if (imageUrl && isValidImageUrl(imageUrl)) {
+          const cleanedUrl = cleanImageUrl(imageUrl);
+          if (cleanedUrl) {
+            validImages.push({
+              url: cleanedUrl,
+              alt: img?.alt || `${data.year} ${data.make} ${data.model} - Image ${i + 1}`,
+              isPrimary: img?.isPrimary || validImages.length === 0,
+              fileName: img?.fileName
+            });
+          }
+        }
+      }
+    }
+    
+    if (validImages.length === 0) {
+      validImages.push({
         url: '/hero.jpg',
         alt: `${data.year} ${data.make} ${data.model}`,
         isPrimary: true
-      }];
+      });
     }
+    
+    data.images = validImages;
   }
   
   // Increment views
@@ -317,7 +434,76 @@ export const getVehicleById = async (id) => {
   return { data, error };
 };
 
-// FIXED: Create vehicle with enhanced image handling
+// FIXED: Clean up orphaned and corrupted images
+export const cleanupCorruptedImages = async () => {
+  try {
+    console.log('Starting cleanup of corrupted images...');
+    
+    // Get all vehicles with their images
+    const { data: vehicles, error: vehiclesError } = await supabase
+      .from('vehicles')
+      .select('id, year, make, model, images');
+    
+    if (vehiclesError) {
+      throw vehiclesError;
+    }
+    
+    const repairedVehicles = [];
+    
+    for (const vehicle of vehicles) {
+      let needsRepair = false;
+      
+      // Check if vehicle has broken images
+      if (!vehicle.images || !Array.isArray(vehicle.images) || vehicle.images.length === 0) {
+        needsRepair = true;
+      } else {
+        // Check each image
+        for (const img of vehicle.images) {
+          const url = typeof img === 'string' ? img : (img?.url || img?.publicUrl);
+          if (!url || !isValidImageUrl(url)) {
+            needsRepair = true;
+            break;
+          }
+        }
+      }
+      
+      if (needsRepair) {
+        console.log(`Repairing vehicle ${vehicle.id}...`);
+        const repairResult = await repairVehicleImages(vehicle.id);
+        
+        if (repairResult.success) {
+          repairedVehicles.push({
+            id: vehicle.id,
+            name: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+            status: 'repaired'
+          });
+        } else {
+          repairedVehicles.push({
+            id: vehicle.id,
+            name: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+            status: 'failed',
+            error: repairResult.error
+          });
+        }
+      }
+    }
+    
+    return {
+      success: true,
+      message: `Cleanup completed. Repaired ${repairedVehicles.filter(v => v.status === 'repaired').length} vehicles.`,
+      repairedVehicles
+    };
+    
+  } catch (error) {
+    console.error('Error in cleanup:', error);
+    return {
+      success: false,
+      error: error.message || 'Cleanup failed'
+    };
+  }
+};
+
+// FIXED: Enhanced create vehicle with better image handling
 export const createVehicle = async (vehicleData, images = []) => {
   try {
     console.log('Creating vehicle with', images.length, 'images');
@@ -333,24 +519,16 @@ export const createVehicle = async (vehicleData, images = []) => {
       }
       
       imageUrls = uploadResult.data || [];
-      
-      // Log any partial errors
-      if (uploadResult.error?.partial) {
-        console.warn('Some images failed to upload:', uploadResult.error.errors);
-      }
     }
     
     // If no images uploaded successfully, use fallback
     if (imageUrls.length === 0) {
-      console.log('No images uploaded, using fallback');
       imageUrls = [{
         url: '/hero.jpg',
         alt: `${vehicleData.year} ${vehicleData.make} ${vehicleData.model}`,
         isPrimary: true
       }];
     }
-
-    console.log('Final image URLs:', imageUrls);
 
     // Prepare vehicle data
     const finalVehicleData = {
@@ -383,12 +561,10 @@ export const createVehicle = async (vehicleData, images = []) => {
       accident_history: vehicleData.accident_history || false,
       number_of_owners: parseInt(vehicleData.number_of_owners) || 1,
       service_records: vehicleData.service_records || false,
-      images: imageUrls, // Store as JSONB array
+      images: imageUrls,
       views: 0,
       created_at: new Date().toISOString()
     };
-
-    console.log('Inserting vehicle data...');
 
     // Insert vehicle into database
     const { data, error } = await supabase
@@ -423,7 +599,7 @@ export const createVehicle = async (vehicleData, images = []) => {
   }
 };
 
-// FIXED: Update vehicle with enhanced image handling
+// FIXED: Enhanced update vehicle 
 export const updateVehicle = async (id, updates, newImages = []) => {
   try {
     // Get existing vehicle data
@@ -437,35 +613,24 @@ export const updateVehicle = async (id, updates, newImages = []) => {
       throw fetchError;
     }
     
-    // Fix existing images if needed
-    let imageUrls = existingVehicle?.images || [];
+    // Start with existing valid images
+    let imageUrls = [];
     
-    // Validate and clean existing images
-    if (Array.isArray(imageUrls)) {
-      imageUrls = imageUrls
-        .map(img => {
-          if (typeof img === 'string') {
-            const cleanedUrl = cleanImageUrl(img);
-            return cleanedUrl ? { url: cleanedUrl, alt: 'Vehicle Image', isPrimary: false } : null;
+    if (existingVehicle?.images && Array.isArray(existingVehicle.images)) {
+      for (const img of existingVehicle.images) {
+        const url = typeof img === 'string' ? img : (img?.url || img?.publicUrl);
+        if (url && isValidImageUrl(url)) {
+          const cleanedUrl = cleanImageUrl(url);
+          if (cleanedUrl) {
+            imageUrls.push({
+              url: cleanedUrl,
+              alt: img?.alt || 'Vehicle Image',
+              isPrimary: img?.isPrimary || imageUrls.length === 0,
+              fileName: img?.fileName
+            });
           }
-          
-          if (typeof img === 'object' && img !== null) {
-            const url = img.url || img.publicUrl || '';
-            const cleanedUrl = cleanImageUrl(url);
-            
-            if (!cleanedUrl) return null;
-            
-            return {
-              ...img,
-              url: cleanedUrl
-            };
-          }
-          
-          return null;
-        })
-        .filter(img => img !== null);
-    } else {
-      imageUrls = [];
+        }
+      }
     }
 
     // Handle new image uploads
@@ -477,7 +642,6 @@ export const updateVehicle = async (id, updates, newImages = []) => {
       }
       
       if (uploadResult.data && uploadResult.data.length > 0) {
-        // Add new images to existing ones
         imageUrls = [...imageUrls, ...uploadResult.data];
       }
     }
@@ -517,135 +681,6 @@ export const updateVehicle = async (id, updates, newImages = []) => {
   } catch (error) {
     console.error('Error in updateVehicle:', error);
     return { data: null, error };
-  }
-};
-
-// FIXED: Enhanced storage diagnostic and repair function
-export const repairBrokenImages = async (vehicleId) => {
-  try {
-    // Get the vehicle
-    const { data: vehicle, error: fetchError } = await supabase
-      .from('vehicles')
-      .select('*')
-      .eq('id', vehicleId)
-      .single();
-    
-    if (fetchError) {
-      throw fetchError;
-    }
-    
-    // Check if vehicle has broken images
-    let needsRepair = false;
-    let repairedImages = [];
-    
-    if (!vehicle.images || !Array.isArray(vehicle.images) || vehicle.images.length === 0) {
-      needsRepair = true;
-    } else {
-      // Check each image
-      for (const img of vehicle.images) {
-        const url = typeof img === 'string' ? img : (img?.url || img?.publicUrl);
-        const cleanedUrl = cleanImageUrl(url);
-        
-        if (cleanedUrl && cleanedUrl !== '/hero.jpg') {
-          repairedImages.push({
-            url: cleanedUrl,
-            alt: img?.alt || `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-            isPrimary: img?.isPrimary || repairedImages.length === 0,
-            fileName: img?.fileName
-          });
-        } else {
-          needsRepair = true;
-        }
-      }
-    }
-    
-    // If needs repair, create a placeholder image
-    if (needsRepair || repairedImages.length === 0) {
-      // Create a canvas-based placeholder image
-      const canvas = document.createElement('canvas');
-      canvas.width = 800;
-      canvas.height = 600;
-      const ctx = canvas.getContext('2d');
-      
-      // Create gradient background
-      const gradient = ctx.createLinearGradient(0, 0, 800, 600);
-      gradient.addColorStop(0, '#1e40af');
-      gradient.addColorStop(1, '#3b82f6');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 800, 600);
-      
-      // Add text
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 48px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`${vehicle.year} ${vehicle.make} ${vehicle.model}`, 400, 280);
-      ctx.font = '24px Arial';
-      ctx.fillText('AUTO PRO REPAIRS', 400, 340);
-      
-      // Convert to blob and upload
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
-      
-      if (blob) {
-        const fileName = `repaired-${vehicle.id}-${Date.now()}.jpg`;
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('vehicle-images')
-          .upload(fileName, blob, {
-            contentType: 'image/jpeg',
-            cacheControl: '3600'
-          });
-        
-        if (!uploadError && uploadData) {
-          const { data: { publicUrl } } = supabase.storage
-            .from('vehicle-images')
-            .getPublicUrl(uploadData.path);
-          
-          const cleanedUrl = cleanImageUrl(publicUrl);
-          
-          if (cleanedUrl) {
-            repairedImages.unshift({
-              url: cleanedUrl,
-              alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-              isPrimary: true,
-              fileName: uploadData.path
-            });
-          }
-        }
-      }
-    }
-    
-    // If still no images, use fallback
-    if (repairedImages.length === 0) {
-      repairedImages = [{
-        url: '/hero.jpg',
-        alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-        isPrimary: true
-      }];
-    }
-    
-    // Update vehicle with repaired images
-    const { error: updateError } = await supabase
-      .from('vehicles')
-      .update({ images: repairedImages })
-      .eq('id', vehicleId);
-    
-    if (updateError) {
-      throw updateError;
-    }
-    
-    return {
-      success: true,
-      message: `Successfully repaired images for ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-      repairedCount: repairedImages.length
-    };
-    
-  } catch (error) {
-    console.error('Error repairing vehicle images:', error);
-    return {
-      success: false,
-      error: error.message || 'Failed to repair images'
-    };
   }
 };
 
@@ -1017,18 +1052,24 @@ export const getImageUrl = (imageObj, fallback = "/hero.jpg") => {
   
   // Handle different image object structures
   if (typeof imageObj === 'string' && imageObj !== '') {
-    const cleaned = cleanImageUrl(imageObj);
-    return cleaned || fallback;
+    if (isValidImageUrl(imageObj)) {
+      const cleaned = cleanImageUrl(imageObj);
+      return cleaned || fallback;
+    }
   }
   
   if (imageObj.url && imageObj.url !== '') {
-    const cleaned = cleanImageUrl(imageObj.url);
-    return cleaned || fallback;
+    if (isValidImageUrl(imageObj.url)) {
+      const cleaned = cleanImageUrl(imageObj.url);
+      return cleaned || fallback;
+    }
   }
   
   if (imageObj.publicUrl && imageObj.publicUrl !== '') {
-    const cleaned = cleanImageUrl(imageObj.publicUrl);
-    return cleaned || fallback;
+    if (isValidImageUrl(imageObj.publicUrl)) {
+      const cleaned = cleanImageUrl(imageObj.publicUrl);
+      return cleaned || fallback;
+    }
   }
   
   return fallback;
@@ -1181,16 +1222,20 @@ export const testImageUpload = async () => {
     
     // Create a test blob
     const canvas = document.createElement('canvas');
-    canvas.width = 100;
-    canvas.height = 100;
+    canvas.width = 200;
+    canvas.height = 200;
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#3b82f6';
-    ctx.fillRect(0, 0, 100, 100);
+    ctx.fillRect(0, 0, 200, 200);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('TEST', 100, 100);
     
     return new Promise((resolve) => {
       canvas.toBlob(async (blob) => {
         const file = new File([blob], 'test-image.png', { type: 'image/png' });
-        const fileName = `test-${Date.now()}.png`;
+        const fileName = generateCleanFilename('test-image.png');
         
         try {
           // Upload to Supabase
@@ -1268,7 +1313,8 @@ export const cleanupTestFiles = async () => {
       file.name.startsWith('test-') || 
       file.name.startsWith('direct-test-') ||
       file.name.startsWith('placeholder-') ||
-      file.name.startsWith('repaired-')
+      file.name.startsWith('repaired-') ||
+      file.name.includes('-test-')
     );
     
     if (testFiles.length === 0) {
@@ -1304,7 +1350,7 @@ export const cleanupTestFiles = async () => {
   }
 };
 
-// FIXED: Enhanced ensure storage bucket function
+// Enhanced ensure storage bucket function
 export const ensureStorageBucket = async () => {
   return await setupStorageBucket();
 };
