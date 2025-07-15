@@ -1,4 +1,4 @@
-// frontend/src/app/inventory/[id]/page.js
+// frontend/src/app/inventory/[id]/page.js - FIXED WITH SIMPLIFIED IMAGE HANDLING
 "use client";
 
 import Image from "next/image";
@@ -29,20 +29,31 @@ export default function VehicleDetail() {
 
   const fetchVehicleDetails = async () => {
     try {
+      setLoading(true);
+      setError(null);
+      
       const { data, error } = await supabase
         .from('vehicles')
         .select('*')
         .eq('id', params.id)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       if (!data) {
         setError('Vehicle not found');
         return;
       }
 
-      setVehicle(data);
+      // Process images
+      const processedVehicle = {
+        ...data,
+        images: processVehicleImages(data.images, data)
+      };
+
+      setVehicle(processedVehicle);
       
       // Increment views
       await supabase.rpc('increment_vehicle_views', { vehicle_id: params.id });
@@ -52,6 +63,43 @@ export default function VehicleDetail() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // SIMPLIFIED: Process vehicle images
+  const processVehicleImages = (images, vehicle) => {
+    if (!images) return [];
+    
+    let imageArray = [];
+    
+    if (Array.isArray(images)) {
+      imageArray = images;
+    } else if (typeof images === 'string') {
+      try {
+        imageArray = JSON.parse(images);
+      } catch (e) {
+        console.warn('Failed to parse images JSON');
+        return [];
+      }
+    } else if (typeof images === 'object' && images.url) {
+      imageArray = [images];
+    } else {
+      return [];
+    }
+    
+    return imageArray.map((img, index) => {
+      if (typeof img === 'string') {
+        return {
+          url: img,
+          alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+          isPrimary: index === 0
+        };
+      }
+      return {
+        url: img.url || img.publicUrl || '',
+        alt: img.alt || `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+        isPrimary: img.isPrimary || index === 0
+      };
+    }).filter(img => img.url);
   };
 
   const handleFormChange = (e) => {
@@ -123,16 +171,26 @@ export default function VehicleDetail() {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">{error || 'Vehicle not found'}</h2>
-          <Link href="/inventory" className="text-blue-400 hover:text-blue-300">
-            ← Back to Inventory
-          </Link>
+          <div className="bg-red-900/20 border border-red-500 rounded-lg p-8 max-w-md mx-auto">
+            <div className="text-red-400 mb-4">
+              <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold mb-4 text-red-400">{error || 'Vehicle not found'}</h2>
+            <Link 
+              href="/inventory" 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-semibold transition-colors inline-block"
+            >
+              ← Back to Inventory
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
-  const defaultImage = vehicle.images && vehicle.images.length > 0 
+  const defaultImage = (vehicle.images && vehicle.images.length > 0) 
     ? vehicle.images[0].url 
     : "/hero.jpg";
 
@@ -163,6 +221,10 @@ export default function VehicleDetail() {
                   alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
                   fill
                   className="object-cover"
+                  onError={(e) => {
+                    console.error('Image load error:', e);
+                    e.target.src = '/hero.jpg';
+                  }}
                 />
                 {vehicle.carfax_available && (
                   <div className="absolute top-4 left-4 bg-green-600 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2">
@@ -188,10 +250,13 @@ export default function VehicleDetail() {
                       }`}
                     >
                       <Image
-                        src={image.url}
+                        src={image.url || "/hero.jpg"}
                         alt={`View ${index + 1}`}
                         fill
                         className="object-cover"
+                        onError={(e) => {
+                          e.target.src = "/hero.jpg";
+                        }}
                       />
                     </button>
                   ))}
@@ -210,7 +275,7 @@ export default function VehicleDetail() {
                 </p>
                 <div className="flex items-baseline gap-4 mb-6">
                   <p className="text-4xl font-bold text-blue-400">
-                    ${vehicle.price?.toLocaleString()}
+                    ${vehicle.price?.toLocaleString() || '0'}
                   </p>
                   {vehicle.sale_price && (
                     <p className="text-2xl text-gray-400 line-through">
@@ -218,7 +283,7 @@ export default function VehicleDetail() {
                     </p>
                   )}
                   <p className="text-lg text-gray-400">
-                    {vehicle.mileage?.toLocaleString()} miles
+                    {vehicle.mileage?.toLocaleString() || '0'} miles
                   </p>
                 </div>
                 {vehicle.monthly_payment && (
@@ -258,7 +323,7 @@ export default function VehicleDetail() {
                   <div className="space-y-2">
                     <p className="flex justify-between">
                       <span className="text-gray-400">Body Type:</span>
-                      <span>{vehicle.body_type}</span>
+                      <span>{vehicle.body_type || 'N/A'}</span>
                     </p>
                     <p className="flex justify-between">
                       <span className="text-gray-400">Engine:</span>
@@ -266,7 +331,7 @@ export default function VehicleDetail() {
                     </p>
                     <p className="flex justify-between">
                       <span className="text-gray-400">Transmission:</span>
-                      <span>{vehicle.transmission}</span>
+                      <span>{vehicle.transmission || 'N/A'}</span>
                     </p>
                     <p className="flex justify-between">
                       <span className="text-gray-400">Drivetrain:</span>
@@ -276,11 +341,11 @@ export default function VehicleDetail() {
                   <div className="space-y-2">
                     <p className="flex justify-between">
                       <span className="text-gray-400">Fuel Type:</span>
-                      <span>{vehicle.fuel_type}</span>
+                      <span>{vehicle.fuel_type || 'N/A'}</span>
                     </p>
                     <p className="flex justify-between">
                       <span className="text-gray-400">Exterior:</span>
-                      <span>{vehicle.exterior_color}</span>
+                      <span>{vehicle.exterior_color || 'N/A'}</span>
                     </p>
                     <p className="flex justify-between">
                       <span className="text-gray-400">Interior:</span>
@@ -288,7 +353,7 @@ export default function VehicleDetail() {
                     </p>
                     <p className="flex justify-between">
                       <span className="text-gray-400">Condition:</span>
-                      <span>{vehicle.condition}</span>
+                      <span>{vehicle.condition || 'N/A'}</span>
                     </p>
                   </div>
                 </div>
@@ -302,7 +367,7 @@ export default function VehicleDetail() {
                 </div>
                 <div className="bg-gray-900 rounded-lg p-4 text-center">
                   <div className="text-2xl mb-2">👥</div>
-                  <p className="font-semibold">{vehicle.number_of_owners} Owner{vehicle.number_of_owners > 1 ? 's' : ''}</p>
+                  <p className="font-semibold">{vehicle.number_of_owners || 1} Owner{(vehicle.number_of_owners || 1) > 1 ? 's' : ''}</p>
                 </div>
               </div>
 

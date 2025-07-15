@@ -1,16 +1,14 @@
-// frontend/src/app/admin/vehicles/page.js
+// frontend/src/app/admin/vehicles/page.js - FIXED WITH SIMPLIFIED IMAGE HANDLING
 "use client";
 
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import AdminLayout from "../AdminLayout";
 import { 
   getVehicles, 
   createVehicle, 
   updateVehicle, 
-  deleteVehicle,
-  supabase 
+  deleteVehicle
 } from "@/lib/supabase";
 
 export default function AdminVehicles() {
@@ -25,7 +23,6 @@ export default function AdminVehicles() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
   
-  // Initialize form with empty strings
   const getInitialFormData = () => ({
     year: new Date().getFullYear(),
     make: "",
@@ -83,7 +80,6 @@ export default function AdminVehicles() {
     const { name, value, type, checked } = e.target;
     
     if (name === 'features' || name === 'key_features') {
-      // Convert comma-separated string to array
       const arrayValue = value.split(',').map(item => item.trim()).filter(item => item);
       setFormData(prev => ({ ...prev, [name]: arrayValue }));
     } else {
@@ -162,7 +158,6 @@ export default function AdminVehicles() {
       resetForm();
       fetchVehicles();
       
-      // Hide success message after 3 seconds
       setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
       console.error('Error saving vehicle:', error);
@@ -228,6 +223,16 @@ export default function AdminVehicles() {
     }
   };
 
+  // SIMPLIFIED: Get image URL with fallback
+  const getImageUrl = (vehicle) => {
+    if (!vehicle.images || vehicle.images.length === 0) {
+      return '/hero.jpg';
+    }
+    
+    const primaryImage = vehicle.images.find(img => img.isPrimary) || vehicle.images[0];
+    return primaryImage?.url || '/hero.jpg';
+  };
+
   return (
     <AdminLayout>
       {/* Header */}
@@ -242,7 +247,7 @@ export default function AdminVehicles() {
         </button>
       </div>
 
-      {/* Success/Error Messages */}
+      {/* Messages */}
       {success && (
         <div className="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
           {success}
@@ -268,9 +273,7 @@ export default function AdminVehicles() {
               <h3 className="text-lg font-semibold mb-4 text-gray-900">Basic Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Year *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Year *</label>
                   <input
                     type="number"
                     name="year"
@@ -283,9 +286,7 @@ export default function AdminVehicles() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Make *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Make *</label>
                   <input
                     type="text"
                     name="make"
@@ -296,9 +297,7 @@ export default function AdminVehicles() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Model *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Model *</label>
                   <input
                     type="text"
                     name="model"
@@ -309,9 +308,7 @@ export default function AdminVehicles() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Trim
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Trim</label>
                   <input
                     type="text"
                     name="trim"
@@ -321,9 +318,7 @@ export default function AdminVehicles() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    VIN
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">VIN</label>
                   <input
                     type="text"
                     name="vin"
@@ -333,9 +328,7 @@ export default function AdminVehicles() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Stock Number
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock Number</label>
                   <input
                     type="text"
                     name="stock_number"
@@ -353,9 +346,7 @@ export default function AdminVehicles() {
               <h3 className="text-lg font-semibold mb-4 text-gray-900">Pricing</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Price *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Price *</label>
                   <input
                     type="number"
                     name="price"
@@ -368,9 +359,7 @@ export default function AdminVehicles() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Sale Price
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sale Price</label>
                   <input
                     type="number"
                     name="sale_price"
@@ -382,9 +371,7 @@ export default function AdminVehicles() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Monthly Payment
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Payment</label>
                   <input
                     type="number"
                     name="monthly_payment"
@@ -404,9 +391,7 @@ export default function AdminVehicles() {
               <h3 className="text-lg font-semibold mb-4 text-gray-900">Vehicle Details</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Mileage *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Mileage *</label>
                   <input
                     type="number"
                     name="mileage"
@@ -418,9 +403,7 @@ export default function AdminVehicles() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Body Type *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Body Type *</label>
                   <select
                     name="body_type"
                     value={formData.body_type}
@@ -441,9 +424,7 @@ export default function AdminVehicles() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Exterior Color *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Exterior Color *</label>
                   <input
                     type="text"
                     name="exterior_color"
@@ -454,9 +435,7 @@ export default function AdminVehicles() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Interior Color
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Interior Color</label>
                   <input
                     type="text"
                     name="interior_color"
@@ -466,9 +445,7 @@ export default function AdminVehicles() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Fuel Type *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fuel Type *</label>
                   <select
                     name="fuel_type"
                     value={formData.fuel_type}
@@ -485,9 +462,7 @@ export default function AdminVehicles() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Transmission *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Transmission *</label>
                   <select
                     name="transmission"
                     value={formData.transmission}
@@ -501,60 +476,12 @@ export default function AdminVehicles() {
                     <option value="CVT">CVT</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Drivetrain
-                  </label>
-                  <select
-                    name="drivetrain"
-                    value={formData.drivetrain}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select Type</option>
-                    <option value="FWD">FWD</option>
-                    <option value="RWD">RWD</option>
-                    <option value="AWD">AWD</option>
-                    <option value="4WD">4WD</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Engine
-                  </label>
-                  <input
-                    type="text"
-                    name="engine"
-                    value={formData.engine}
-                    onChange={handleInputChange}
-                    placeholder="e.g., 2.5L 4-Cylinder"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Condition
-                  </label>
-                  <select
-                    name="condition"
-                    value={formData.condition}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="Excellent">Excellent</option>
-                    <option value="Good">Good</option>
-                    <option value="Fair">Fair</option>
-                    <option value="Poor">Poor</option>
-                  </select>
-                </div>
               </div>
             </div>
 
             {/* Features */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Features (comma separated)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Features (comma separated)</label>
               <textarea
                 name="features"
                 value={formData.features.join(', ')}
@@ -567,9 +494,7 @@ export default function AdminVehicles() {
 
             {/* Key Features */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Key Features (comma separated)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Key Features (comma separated)</label>
               <input
                 type="text"
                 name="key_features"
@@ -582,9 +507,7 @@ export default function AdminVehicles() {
 
             {/* Description */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Description
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
               <textarea
                 name="description"
                 value={formData.description}
@@ -629,6 +552,9 @@ export default function AdminVehicles() {
                           src={image.url}
                           alt={image.alt}
                           className="w-full h-full object-cover rounded"
+                          onError={(e) => {
+                            e.target.src = '/hero.jpg';
+                          }}
                         />
                       </div>
                     ))}
@@ -647,9 +573,7 @@ export default function AdminVehicles() {
                   onChange={handleInputChange}
                   className="mr-2"
                 />
-                <span className="text-sm font-medium text-gray-700">
-                  Financing Available
-                </span>
+                <span className="text-sm font-medium text-gray-700">Financing Available</span>
               </label>
               <label className="flex items-center">
                 <input
@@ -659,9 +583,7 @@ export default function AdminVehicles() {
                   onChange={handleInputChange}
                   className="mr-2"
                 />
-                <span className="text-sm font-medium text-gray-700">
-                  CARFAX Report Available
-                </span>
+                <span className="text-sm font-medium text-gray-700">CARFAX Report Available</span>
               </label>
               <label className="flex items-center">
                 <input
@@ -671,9 +593,7 @@ export default function AdminVehicles() {
                   onChange={handleInputChange}
                   className="mr-2"
                 />
-                <span className="text-sm font-medium text-gray-700">
-                  Feature this vehicle
-                </span>
+                <span className="text-sm font-medium text-gray-700">Feature this vehicle</span>
               </label>
               <label className="flex items-center">
                 <input
@@ -683,9 +603,7 @@ export default function AdminVehicles() {
                   onChange={handleInputChange}
                   className="mr-2"
                 />
-                <span className="text-sm font-medium text-gray-700">
-                  Accident History
-                </span>
+                <span className="text-sm font-medium text-gray-700">Accident History</span>
               </label>
               <label className="flex items-center">
                 <input
@@ -695,9 +613,7 @@ export default function AdminVehicles() {
                   onChange={handleInputChange}
                   className="mr-2"
                 />
-                <span className="text-sm font-medium text-gray-700">
-                  Service Records Available
-                </span>
+                <span className="text-sm font-medium text-gray-700">Service Records Available</span>
               </label>
             </div>
 
@@ -735,30 +651,17 @@ export default function AdminVehicles() {
           </div>
         ) : vehicles.length === 0 ? (
           <div className="text-center py-12">
-            <svg
-              className="mx-auto h-12 w-12 text-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                vectorEffect="non-scaling-stroke"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
-              />
+            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
             </svg>
             <h3 className="mt-2 text-sm font-medium text-gray-900">No vehicles</h3>
             <p className="mt-1 text-sm text-gray-500">Get started by adding a new vehicle.</p>
             <div className="mt-6">
               <button
-                type="button"
                 onClick={() => setShowForm(true)}
-                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
               >
-                <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
                 </svg>
                 Add Vehicle
@@ -769,24 +672,12 @@ export default function AdminVehicles() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Vehicle
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Price
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Views
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Featured
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Views</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Featured</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -794,15 +685,16 @@ export default function AdminVehicles() {
                 <tr key={vehicle.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      {vehicle.images && vehicle.images.length > 0 && (
-                        <div className="flex-shrink-0 h-10 w-10 mr-3">
-                          <img
-                            src={vehicle.images[0].url}
-                            alt={vehicle.images[0].alt}
-                            className="h-10 w-10 rounded object-cover"
-                          />
-                        </div>
-                      )}
+                      <div className="flex-shrink-0 h-10 w-10 mr-3">
+                        <img
+                          src={getImageUrl(vehicle)}
+                          alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
+                          className="h-10 w-10 rounded object-cover"
+                          onError={(e) => {
+                            e.target.src = '/hero.jpg';
+                          }}
+                        />
+                      </div>
                       <div>
                         <div className="text-sm font-medium text-gray-900">
                           {vehicle.year} {vehicle.make} {vehicle.model}
@@ -841,7 +733,6 @@ export default function AdminVehicles() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <button
-                      type="button"
                       onClick={() => toggleFeatured(vehicle)}
                       className={`text-sm ${
                         vehicle.featured 
@@ -854,14 +745,12 @@ export default function AdminVehicles() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
-                      type="button"
                       onClick={() => handleEdit(vehicle)}
                       className="text-indigo-600 hover:text-indigo-900 mr-3"
                     >
                       Edit
                     </button>
                     <button
-                      type="button"
                       onClick={() => handleDelete(vehicle.id)}
                       className="text-red-600 hover:text-red-900"
                     >
