@@ -282,8 +282,11 @@ export default function StorageDiagnostic() {
               {vehicles.filter(v => {
                 if (!v.images || v.images.length === 0) return false;
                 return v.images.some(img => {
-                  const status = checkImageStatus(img.url);
-                  return status.status === 'not-found';
+                  if (!img.url) return true;
+                  const urlParts = img.url.split('/');
+                  const filename = urlParts[urlParts.length - 1];
+                  const fileExists = bucketFiles.some(file => file.name === filename);
+                  return !fileExists;
                 });
               }).length}
             </p>
@@ -367,10 +370,10 @@ export default function StorageDiagnostic() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {vehicles.map((vehicle) => {
                     const hasImages = vehicle.images && vehicle.images.length > 0;
-                    const brokenImages = hasImages ? vehicle.images.filter(img => {
+                    const brokenImageCount = hasImages ? vehicle.images.filter(img => {
                       const status = checkImageStatus(img.url);
                       return status.status === 'not-found';
-                    }) : [];
+                    }).length : 0;
                     
                     return (
                       <tr key={vehicle.id}>
@@ -410,9 +413,9 @@ export default function StorageDiagnostic() {
                             <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">
                               No Images
                             </span>
-                          ) : brokenImages.length > 0 ? (
+                          ) : brokenImageCount > 0 ? (
                             <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">
-                              {brokenImages.length} Broken
+                              {brokenImageCount} Broken
                             </span>
                           ) : (
                             <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
@@ -427,7 +430,7 @@ export default function StorageDiagnostic() {
                           >
                             Details
                           </button>
-                          {brokenImages.length > 0 && (
+                          {brokenImageCount > 0 && (
                             <button
                               onClick={() => fixVehicleImages(vehicle).then(results => {
                                 setFixResults([{
