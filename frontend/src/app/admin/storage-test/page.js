@@ -1,207 +1,314 @@
-// frontend/src/app/admin/storage-test/page.js - SIMPLE STORAGE URL TEST
+// frontend/src/app/admin/storage-test/page.js - ENHANCED DEBUGGING
 "use client";
 
 import { useState } from "react";
 import AdminLayout from "../AdminLayout";
-import { supabase } from "@/lib/supabase";
+import { supabase, checkStorageConfig, testImageUpload, cleanupTestFiles } from "@/lib/supabase";
 
-export default function SimpleStorageTest() {
+export default function EnhancedStorageTest() {
   const [testResults, setTestResults] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const runStorageUrlTest = async () => {
+  const runComprehensiveTest = async () => {
     setLoading(true);
     setTestResults([]);
     
     const results = [];
     
     try {
-      // Test 1: Check environment variables
+      // Test 1: Environment Variables
       results.push({
         test: "Environment Variables",
-        status: process.env.NEXT_PUBLIC_SUPABASE_URL ? "✅ URL present" : "❌ URL missing",
-        details: process.env.NEXT_PUBLIC_SUPABASE_URL ? `URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL}` : "NEXT_PUBLIC_SUPABASE_URL not found"
-      });
-      
-      results.push({
-        test: "Supabase Key",
-        status: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "✅ Key present" : "❌ Key missing",
-        details: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "Anon key is configured" : "NEXT_PUBLIC_SUPABASE_ANON_KEY not found"
+        status: process.env.NEXT_PUBLIC_SUPABASE_URL ? "✅ PASS" : "❌ FAIL",
+        details: `URL: ${process.env.NEXT_PUBLIC_SUPABASE_URL ? 'Present' : 'MISSING'}\nKey: ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'Present' : 'MISSING'}`,
+        data: process.env.NEXT_PUBLIC_SUPABASE_URL ? {
+          url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+          keyLength: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.length || 0
+        } : null
       });
 
-      // Test 2: Check if bucket exists
+      // Test 2: Storage Configuration Check
+      console.log('🔍 Running storage config check...');
+      const configResult = await checkStorageConfig();
+      results.push({
+        test: "Storage Configuration",
+        status: configResult.success ? "✅ PASS" : "❌ FAIL",
+        details: configResult.success ? 
+          `Bucket accessible\nFiles found: ${configResult.fileCount}\nURL tests: ${configResult.urlTests?.length || 0}` :
+          `Error: ${configResult.error}`,
+        data: configResult
+      });
+
+      // Test 3: Direct Bucket Access
+      console.log('🪣 Testing direct bucket access...');
       try {
         const { data: bucketList, error: bucketError } = await supabase.storage.listBuckets();
         
         if (bucketError) {
           results.push({
             test: "Bucket List",
-            status: "❌ Error",
-            details: `Error listing buckets: ${bucketError.message}`
+            status: "❌ FAIL",
+            details: `Error: ${bucketError.message}`,
+            data: { error: bucketError }
           });
         } else {
           const vehicleImagesBucket = bucketList.find(b => b.name === 'vehicle-images');
           results.push({
-            test: "Bucket Exists",
-            status: vehicleImagesBucket ? "✅ Found" : "❌ Missing",
+            test: "Bucket List",
+            status: vehicleImagesBucket ? "✅ PASS" : "⚠️ PARTIAL",
             details: vehicleImagesBucket ? 
-              `Bucket found. Public: ${vehicleImagesBucket.public}, Created: ${vehicleImagesBucket.created_at}` :
-              "vehicle-images bucket not found"
+              `Found vehicle-images bucket\nPublic: ${vehicleImagesBucket.public}\nCreated: ${vehicleImagesBucket.created_at}` :
+              `Found ${bucketList.length} buckets but no vehicle-images`,
+            data: { buckets: bucketList, target: vehicleImagesBucket }
           });
         }
       } catch (bucketErr) {
         results.push({
           test: "Bucket List",
-          status: "❌ Error",
-          details: `Exception: ${bucketErr.message}`
+          status: "❌ FAIL",
+          details: `Exception: ${bucketErr.message}`,
+          data: { error: bucketErr }
         });
       }
 
-      // Test 3: List files in bucket
-      try {
-        const { data: files, error: listError } = await supabase.storage
-          .from('vehicle-images')
-          .list('', { limit: 10 });
+      // Test 4: File Upload Test
+      console.log('📤 Testing image upload...');
+      const uploadResult = await testImageUpload();
+      results.push({
+        test: "Image Upload",
+        status: uploadResult.success ? "✅ PASS" : "❌ FAIL",
+        details: uploadResult.success ? 
+          `Upload successful\nURL: ${uploadResult.url}\nAccessible: ${uploadResult.urlAccessible ? 'Yes' : 'No'}` :
+          `Error: ${uploadResult.error}`,
+        data: uploadResult
+      });
+
+      // Test 5: URL Structure Analysis
+      if (uploadResult.success && uploadResult.url) {
+        console.log('🔗 Analyzing URL structure...');
+        const url = uploadResult.url;
+        const urlParts = new URL(url);
         
-        if (listError) {
-          results.push({
-            test: "File List",
-            status: "❌ Error",
-            details: `Error listing files: ${listError.message}`
+        results.push({
+          test: "URL Structure",
+          status: "ℹ️ INFO",
+          details: `Protocol: ${urlParts.protocol}\nHost: ${urlParts.hostname}\nPath: ${urlParts.pathname}`,
+          data: {
+            protocol: urlParts.protocol,
+            hostname: urlParts.hostname,
+            pathname: urlParts.pathname,
+            fullUrl: url
+          }
+        });
+
+        // Test 6: URL Accessibility from Multiple Methods
+        console.log('📡 Testing URL accessibility...');
+        const accessTests = [];
+        
+        // HEAD request
+        try {
+          const headResponse = await fetch(url, { method: 'HEAD' });
+          accessTests.push({
+            method: 'HEAD',
+            status: headResponse.status,
+            statusText: headResponse.statusText,
+            success: headResponse.ok
           });
-        } else {
-          results.push({
-            test: "File List",
-            status: "✅ Success",
-            details: `Found ${files.length} files in bucket`
+        } catch (headError) {
+          accessTests.push({
+            method: 'HEAD',
+            status: 'ERROR',
+            statusText: headError.message,
+            success: false
+          });
+        }
+
+        // GET request
+        try {
+          const getResponse = await fetch(url, { method: 'GET' });
+          accessTests.push({
+            method: 'GET',
+            status: getResponse.status,
+            statusText: getResponse.statusText,
+            success: getResponse.ok,
+            contentType: getResponse.headers.get('content-type'),
+            contentLength: getResponse.headers.get('content-length')
+          });
+        } catch (getError) {
+          accessTests.push({
+            method: 'GET',
+            status: 'ERROR',
+            statusText: getError.message,
+            success: false
+          });
+        }
+
+        const successfulTests = accessTests.filter(t => t.success).length;
+        results.push({
+          test: "URL Accessibility",
+          status: successfulTests > 0 ? "✅ PASS" : "❌ FAIL",
+          details: `${successfulTests}/${accessTests.length} access methods succeeded`,
+          data: { accessTests }
+        });
+      }
+
+      // Test 7: Browser Image Loading Test
+      if (uploadResult.success && uploadResult.url) {
+        console.log('🖼️ Testing browser image loading...');
+        
+        const imageLoadTest = await new Promise((resolve) => {
+          const img = new Image();
+          const timeout = setTimeout(() => {
+            resolve({
+              success: false,
+              error: 'Timeout after 10 seconds',
+              naturalWidth: 0,
+              naturalHeight: 0
+            });
+          }, 10000);
+
+          img.onload = () => {
+            clearTimeout(timeout);
+            resolve({
+              success: true,
+              naturalWidth: img.naturalWidth,
+              naturalHeight: img.naturalHeight,
+              complete: img.complete
+            });
+          };
+
+          img.onerror = (error) => {
+            clearTimeout(timeout);
+            resolve({
+              success: false,
+              error: 'Image failed to load',
+              naturalWidth: 0,
+              naturalHeight: 0
+            });
+          };
+
+          img.src = uploadResult.url;
+        });
+
+        results.push({
+          test: "Browser Image Loading",
+          status: imageLoadTest.success ? "✅ PASS" : "❌ FAIL",
+          details: imageLoadTest.success ?
+            `Image loaded successfully\nDimensions: ${imageLoadTest.naturalWidth}x${imageLoadTest.naturalHeight}` :
+            `Error: ${imageLoadTest.error}`,
+          data: imageLoadTest
+        });
+      }
+
+      // Test 8: CORS Headers Check
+      if (uploadResult.success && uploadResult.url) {
+        console.log('🌐 Checking CORS headers...');
+        
+        try {
+          const corsResponse = await fetch(uploadResult.url, {
+            method: 'OPTIONS'
           });
           
-          // Test URLs for first few files
-          if (files.length > 0) {
-            for (let i = 0; i < Math.min(3, files.length); i++) {
-              const file = files[i];
-              
-              // Generate public URL
-              const { data: { publicUrl } } = supabase.storage
-                .from('vehicle-images')
-                .getPublicUrl(file.name);
-              
-              // Test if URL is accessible
-              try {
-                const response = await fetch(publicUrl, { method: 'HEAD' });
-                results.push({
-                  test: `URL Test ${i + 1}`,
-                  status: response.ok ? `✅ ${response.status}` : `❌ ${response.status}`,
-                  details: `File: ${file.name}, URL: ${publicUrl}, Status: ${response.status} ${response.statusText}`
-                });
-              } catch (fetchErr) {
-                results.push({
-                  test: `URL Test ${i + 1}`,
-                  status: "❌ Fetch Error",
-                  details: `File: ${file.name}, URL: ${publicUrl}, Error: ${fetchErr.message}`
-                });
-              }
+          const corsHeaders = {
+            'access-control-allow-origin': corsResponse.headers.get('access-control-allow-origin'),
+            'access-control-allow-methods': corsResponse.headers.get('access-control-allow-methods'),
+            'access-control-allow-headers': corsResponse.headers.get('access-control-allow-headers'),
+            'access-control-max-age': corsResponse.headers.get('access-control-max-age')
+          };
+
+          results.push({
+            test: "CORS Headers",
+            status: corsHeaders['access-control-allow-origin'] ? "✅ PASS" : "⚠️ PARTIAL",
+            details: `Origin: ${corsHeaders['access-control-allow-origin'] || 'Not set'}\nMethods: ${corsHeaders['access-control-allow-methods'] || 'Not set'}`,
+            data: { corsHeaders, status: corsResponse.status }
+          });
+        } catch (corsError) {
+          results.push({
+            test: "CORS Headers",
+            status: "❌ FAIL",
+            details: `CORS check failed: ${corsError.message}`,
+            data: { error: corsError }
+          });
+        }
+      }
+
+      // Test 9: Network Connectivity 
+      console.log('🌍 Testing network connectivity...');
+      try {
+        const connectivityTests = [];
+        
+        // Test connection to Supabase
+        const supabaseHost = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname;
+        try {
+          const supabaseResponse = await fetch(`https://${supabaseHost}/rest/v1/`, { 
+            method: 'HEAD',
+            headers: {
+              'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
             }
-          }
+          });
+          connectivityTests.push({
+            target: 'Supabase API',
+            host: supabaseHost,
+            status: supabaseResponse.status,
+            success: supabaseResponse.ok
+          });
+        } catch (supabaseError) {
+          connectivityTests.push({
+            target: 'Supabase API',
+            host: supabaseHost,
+            status: 'ERROR',
+            success: false,
+            error: supabaseError.message
+          });
         }
-      } catch (listErr) {
-        results.push({
-          test: "File List",
-          status: "❌ Error",
-          details: `Exception: ${listErr.message}`
-        });
-      }
 
-      // Test 4: Try uploading a simple test file
-      try {
-        const testFile = new Blob(['test content'], { type: 'text/plain' });
-        const fileName = `storage-test-${Date.now()}.txt`;
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('vehicle-images')
-          .upload(fileName, testFile);
-        
-        if (uploadError) {
-          results.push({
-            test: "Test Upload",
-            status: "❌ Error",
-            details: `Upload failed: ${uploadError.message}`
+        // Test connection to Supabase Storage
+        try {
+          const storageResponse = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/bucket/vehicle-images`, {
+            method: 'HEAD',
+            headers: {
+              'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`
+            }
           });
-        } else {
-          results.push({
-            test: "Test Upload",
-            status: "✅ Success",
-            details: `Successfully uploaded: ${uploadData.path}`
+          connectivityTests.push({
+            target: 'Supabase Storage',
+            host: supabaseHost,
+            status: storageResponse.status,
+            success: storageResponse.ok
           });
-          
-          // Test the uploaded file's URL
-          const { data: { publicUrl } } = supabase.storage
-            .from('vehicle-images')
-            .getPublicUrl(fileName);
-          
-          try {
-            const response = await fetch(publicUrl);
-            const content = await response.text();
-            
-            results.push({
-              test: "Test Upload URL",
-              status: response.ok ? "✅ Accessible" : `❌ ${response.status}`,
-              details: `URL: ${publicUrl}, Content: "${content}"`
-            });
-          } catch (fetchErr) {
-            results.push({
-              test: "Test Upload URL",
-              status: "❌ Not Accessible",
-              details: `URL: ${publicUrl}, Error: ${fetchErr.message}`
-            });
-          }
-          
-          // Clean up test file
-          await supabase.storage
-            .from('vehicle-images')
-            .remove([fileName]);
+        } catch (storageError) {
+          connectivityTests.push({
+            target: 'Supabase Storage',
+            host: supabaseHost,
+            status: 'ERROR',
+            success: false,
+            error: storageError.message
+          });
         }
-      } catch (uploadErr) {
-        results.push({
-          test: "Test Upload",
-          status: "❌ Error",
-          details: `Exception: ${uploadErr.message}`
-        });
-      }
 
-      // Test 5: Check bucket policy/RLS
-      try {
-        const { data: policies, error: policyError } = await supabase
-          .from('buckets')
-          .select('*')
-          .eq('name', 'vehicle-images');
-        
-        if (policyError) {
-          results.push({
-            test: "Bucket Policy",
-            status: "⚠️ Cannot Check",
-            details: `Cannot read bucket policies: ${policyError.message}`
-          });
-        } else {
-          results.push({
-            test: "Bucket Policy",
-            status: "ℹ️ Info",
-            details: `Bucket configuration: ${JSON.stringify(policies, null, 2)}`
-          });
-        }
-      } catch (policyErr) {
+        const successfulConnections = connectivityTests.filter(t => t.success).length;
         results.push({
-          test: "Bucket Policy",
-          status: "⚠️ Cannot Check",
-          details: `Exception: ${policyErr.message}`
+          test: "Network Connectivity",
+          status: successfulConnections > 0 ? "✅ PASS" : "❌ FAIL",
+          details: `${successfulConnections}/${connectivityTests.length} connections successful`,
+          data: { connectivityTests }
+        });
+
+      } catch (networkError) {
+        results.push({
+          test: "Network Connectivity",
+          status: "❌ FAIL",
+          details: `Network test failed: ${networkError.message}`,
+          data: { error: networkError }
         });
       }
 
     } catch (error) {
       results.push({
-        test: "General Error",
-        status: "❌ Failed",
-        details: `Unexpected error: ${error.message}`
+        test: "Test Suite Error",
+        status: "❌ CRITICAL",
+        details: `Test suite failed: ${error.message}`,
+        data: { error }
       });
     }
     
@@ -210,58 +317,114 @@ export default function SimpleStorageTest() {
   };
 
   const getStatusColor = (status) => {
-    if (status.includes('✅')) return 'text-green-600';
-    if (status.includes('❌')) return 'text-red-600';
-    if (status.includes('⚠️')) return 'text-yellow-600';
-    return 'text-blue-600';
+    if (status.includes('✅')) return 'text-green-600 bg-green-50 border-green-200';
+    if (status.includes('❌')) return 'text-red-600 bg-red-50 border-red-200';
+    if (status.includes('⚠️')) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+    return 'text-blue-600 bg-blue-50 border-blue-200';
+  };
+
+  const cleanup = async () => {
+    setLoading(true);
+    try {
+      const result = await cleanupTestFiles();
+      alert(result.success ? result.message : `Cleanup failed: ${result.error}`);
+    } catch (error) {
+      alert(`Cleanup error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <AdminLayout>
-      <div className="max-w-4xl mx-auto p-6">
-        <h1 className="text-3xl font-bold mb-6 text-gray-900">🧪 Simple Storage URL Test</h1>
+      <div className="max-w-6xl mx-auto p-6">
+        <h1 className="text-3xl font-bold mb-6 text-gray-900">🧪 Enhanced Storage Diagnostics</h1>
         
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <h2 className="font-semibold text-blue-800 mb-2">ℹ️ What This Tests</h2>
-          <ul className="text-blue-700 text-sm space-y-1">
-            <li>• Environment variables configuration</li>
-            <li>• Supabase storage bucket existence and accessibility</li>
-            <li>• File listing and public URL generation</li>
-            <li>• Actual URL accessibility (can images be fetched?)</li>
-            <li>• Upload functionality with real URL testing</li>
-          </ul>
+          <h2 className="font-semibold text-blue-800 mb-2">🔍 Comprehensive Testing</h2>
+          <p className="text-blue-700 text-sm mb-3">
+            This enhanced test suite will thoroughly check your Supabase storage configuration, 
+            URL generation, network connectivity, and image accessibility to help diagnose upload issues.
+          </p>
+          <div className="text-blue-700 text-xs space-y-1">
+            <p>• Environment variable validation</p>
+            <p>• Bucket configuration and accessibility</p>
+            <p>• Image upload and URL generation</p>
+            <p>• Network connectivity and CORS headers</p>
+            <p>• Browser image loading capabilities</p>
+          </div>
         </div>
 
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">Run Storage Tests</h2>
-            <button
-              onClick={runStorageUrlTest}
-              disabled={loading}
-              className={`px-6 py-2 rounded font-semibold text-white transition-colors ${
-                loading 
-                  ? 'bg-gray-400 cursor-not-allowed' 
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
-            >
-              {loading ? '🔄 Testing...' : '🧪 Run All Tests'}
-            </button>
+            <h2 className="text-xl font-bold">Diagnostic Controls</h2>
+            <div className="flex gap-3">
+              <button
+                onClick={cleanup}
+                disabled={loading}
+                className={`px-4 py-2 rounded font-semibold text-white transition-colors ${
+                  loading 
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-orange-600 hover:bg-orange-700'
+                }`}
+              >
+                🧹 Cleanup Test Files
+              </button>
+              <button
+                onClick={runComprehensiveTest}
+                disabled={loading}
+                className={`px-6 py-2 rounded font-semibold text-white transition-colors ${
+                  loading 
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {loading ? '🔄 Running Tests...' : '🚀 Run Full Diagnostic'}
+              </button>
+            </div>
           </div>
+          
+          {loading && (
+            <div className="text-center py-8">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
+              <p className="text-gray-600">Running comprehensive diagnostics...</p>
+              <p className="text-sm text-gray-500 mt-2">This may take 30-60 seconds</p>
+            </div>
+          )}
           
           {testResults.length > 0 && (
             <div className="space-y-4">
-              <h3 className="font-semibold text-gray-800">Test Results:</h3>
+              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                📊 Test Results
+                <span className="text-sm font-normal text-gray-600">
+                  ({testResults.filter(r => r.status.includes('✅')).length} passed, 
+                   {testResults.filter(r => r.status.includes('❌')).length} failed)
+                </span>
+              </h3>
+              
               {testResults.map((result, index) => (
-                <div key={index} className="border border-gray-200 rounded p-4">
+                <div key={index} className={`border rounded-lg p-4 ${getStatusColor(result.status)}`}>
                   <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-medium">{result.test}</h4>
-                    <span className={`font-semibold ${getStatusColor(result.status)}`}>
+                    <h4 className="font-medium text-lg">{result.test}</h4>
+                    <span className="font-bold text-sm px-2 py-1 rounded">
                       {result.status}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded break-all">
+                  
+                  <div className="text-sm mb-3 whitespace-pre-line">
                     {result.details}
-                  </p>
+                  </div>
+                  
+                  {result.data && (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer font-medium mb-2 text-gray-700">
+                        🔍 Technical Details
+                      </summary>
+                      <pre className="bg-gray-800 text-green-400 p-3 rounded overflow-x-auto">
+                        {JSON.stringify(result.data, null, 2)}
+                      </pre>
+                    </details>
+                  )}
                 </div>
               ))}
             </div>
@@ -269,14 +432,40 @@ export default function SimpleStorageTest() {
         </div>
 
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
-          <h2 className="text-lg font-bold mb-4">🔧 Next Steps Based on Results</h2>
-          <div className="text-sm space-y-2 text-gray-700">
-            <p><strong>If Environment Variables fail:</strong> Check your .env.local file</p>
-            <p><strong>If Bucket doesn't exist:</strong> Go to Supabase dashboard → Storage → Create bucket named "vehicle-images"</p>
-            <p><strong>If Bucket exists but files aren't accessible:</strong> Check bucket is set to "Public" in Supabase dashboard</p>
-            <p><strong>If URLs return 404:</strong> Bucket exists but RLS policies may be blocking access</p>
-            <p><strong>If Upload fails:</strong> Check Supabase project quotas and permissions</p>
-            <p><strong>If all tests pass:</strong> The issue is likely in the vehicle image processing logic</p>
+          <h2 className="text-lg font-bold mb-4">🛠️ Troubleshooting Guide</h2>
+          <div className="text-sm space-y-3 text-gray-700">
+            <div className="bg-white p-3 rounded border-l-4 border-red-500">
+              <h4 className="font-semibold text-red-700">❌ If Environment Variables Fail:</h4>
+              <p>Check your <code>.env.local</code> file and ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set correctly.</p>
+            </div>
+            
+            <div className="bg-white p-3 rounded border-l-4 border-yellow-500">
+              <h4 className="font-semibold text-yellow-700">⚠️ If Bucket Doesn't Exist:</h4>
+              <p>Go to your Supabase dashboard → Storage → Create a new bucket named "vehicle-images" and set it to Public.</p>
+            </div>
+            
+            <div className="bg-white p-3 rounded border-l-4 border-blue-500">
+              <h4 className="font-semibold text-blue-700">🔗 If URLs Return 404:</h4>
+              <p>Check that your bucket is set to Public in Supabase dashboard and RLS policies aren't blocking access.</p>
+            </div>
+            
+            <div className="bg-white p-3 rounded border-l-4 border-purple-500">
+              <h4 className="font-semibold text-purple-700">🌐 If Network Tests Fail:</h4>
+              <p>Check your internet connection and firewall settings. Corporate networks may block Supabase.</p>
+            </div>
+            
+            <div className="bg-white p-3 rounded border-l-4 border-green-500">
+              <h4 className="font-semibold text-green-700">✅ If All Tests Pass:</h4>
+              <p>The storage configuration is working. The issue is likely in the vehicle form or image processing logic.</p>
+            </div>
+          </div>
+          
+          <div className="mt-4 p-3 bg-blue-100 rounded">
+            <h4 className="font-semibold text-blue-800 mb-2">📧 Need Help?</h4>
+            <p className="text-blue-700 text-sm">
+              If you're still having issues after running these tests, copy the technical details from any failed tests 
+              and contact support with the specific error information.
+            </p>
           </div>
         </div>
       </div>

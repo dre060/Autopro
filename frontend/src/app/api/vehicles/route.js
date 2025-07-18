@@ -1,4 +1,4 @@
-// frontend/src/app/api/vehicles/route.js - FIXED IMAGE HANDLING
+// frontend/src/app/api/vehicles/route.js - COMPLETE WITH ENHANCED DEBUGGING
 import { NextResponse } from 'next/server';
 import { supabase, createVehicle } from '@/lib/supabase';
 
@@ -69,7 +69,7 @@ export async function GET(request) {
       );
     }
 
-    // ENHANCED: Process images with detailed debugging
+    // Process images with detailed debugging
     const processedVehicles = (data || []).map((vehicle, vehicleIndex) => {
       console.log(`\n🚗 API: Processing vehicle ${vehicleIndex + 1}: ${vehicle.year} ${vehicle.make} ${vehicle.model}`);
       console.log('Raw images data:', vehicle.images);
@@ -126,12 +126,12 @@ export async function GET(request) {
             console.log(`    Primary: ${isPrimary}`);
           }
           
-          // Enhanced URL validation with debugging
+          // URL validation with debugging
           if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
             const cleanedUrl = imageUrl.trim();
             console.log(`    Cleaned URL: ${cleanedUrl}`);
             
-            // Check if it's a valid URL structure
+            // More permissive validation - accept any HTTP/HTTPS URL
             const isValidUrl = cleanedUrl.startsWith('http://') || 
                              cleanedUrl.startsWith('https://') || 
                              cleanedUrl.startsWith('/');
@@ -206,17 +206,17 @@ export async function POST(request) {
     const vehicleData = {};
     const images = [];
 
-    // Extract form data
+    // Extract form data with detailed logging
     for (const [key, value] of formData.entries()) {
       if (key.startsWith('image') && value instanceof File) {
         images.push(value);
-        console.log(`📷 Found image: ${value.name} (${Math.round(value.size / 1024)}KB)`);
+        console.log(`📷 Found image: ${value.name} (${Math.round(value.size / 1024)}KB, ${value.type})`);
       } else {
         vehicleData[key] = value;
       }
     }
 
-    console.log('📝 Vehicle data:', {
+    console.log('📝 Vehicle data summary:', {
       year: vehicleData.year,
       make: vehicleData.make,
       model: vehicleData.model,
@@ -224,7 +224,17 @@ export async function POST(request) {
       imageCount: images.length
     });
 
-    // SIMPLIFIED: Process form data with better type conversion
+    // Log all images for debugging
+    if (images.length > 0) {
+      console.log('📷 Image details:');
+      images.forEach((img, index) => {
+        console.log(`  ${index + 1}. ${img.name} - ${img.type} - ${Math.round(img.size / 1024)}KB`);
+      });
+    } else {
+      console.log('⚠️ No images provided');
+    }
+
+    // Process form data with better type conversion
     const processedVehicleData = {
       year: parseInt(vehicleData.year) || new Date().getFullYear(),
       make: String(vehicleData.make || '').trim(),
@@ -261,6 +271,7 @@ export async function POST(request) {
     const requiredFields = ['make', 'model', 'price', 'body_type', 'exterior_color', 'fuel_type', 'transmission'];
     for (const field of requiredFields) {
       if (!processedVehicleData[field]) {
+        console.error(`❌ Missing required field: ${field}`);
         return NextResponse.json(
           { error: `Missing required field: ${field}` },
           { status: 400 }
@@ -268,26 +279,46 @@ export async function POST(request) {
       }
     }
 
-    console.log('✅ Processed vehicle data:', processedVehicleData);
+    console.log('✅ Validation passed');
+    console.log('📊 Final vehicle data:', processedVehicleData);
 
-    // Use createVehicle from supabase.js which handles all the image upload logic
+    // Use createVehicle from supabase.js with enhanced error handling
+    console.log('🚀 Calling createVehicle function...');
     const result = await createVehicle(processedVehicleData, images);
 
     if (result.error) {
       console.error('❌ Vehicle creation failed:', result.error);
       return NextResponse.json(
-        { error: 'Failed to create vehicle', details: result.error.message },
+        { 
+          error: 'Failed to create vehicle', 
+          details: result.error.message || 'Unknown error',
+          vehicleData: processedVehicleData,
+          imageCount: images.length
+        },
         { status: 500 }
       );
     }
 
     console.log('✅ Vehicle created successfully:', result.data.id);
+    console.log('📷 Final vehicle images:', result.data.images?.length || 0);
+    
+    if (result.data.images && result.data.images.length > 0) {
+      console.log('🔗 Image URLs:');
+      result.data.images.forEach((img, index) => {
+        console.log(`  ${index + 1}. ${img.url}`);
+      });
+    }
+    
     return NextResponse.json(result.data);
     
   } catch (error) {
     console.error('❌ POST error:', error);
     return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+      { 
+        error: 'Internal server error', 
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      },
       { status: 500 }
     );
   }

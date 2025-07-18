@@ -1,4 +1,4 @@
-// frontend/src/app/admin/vehicles/page.js - FIXED WITH SIMPLIFIED IMAGE HANDLING
+// frontend/src/app/admin/vehicles/page.js - COMPLETE WITH ENHANCED DEBUGGING
 "use client";
 
 import { useState, useEffect } from "react";
@@ -16,7 +16,7 @@ export default function AdminVehicles() {
   const [vehicles, setVehicles] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [imageFiles, setImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
   const [error, setError] = useState("");
@@ -64,11 +64,13 @@ export default function AdminVehicles() {
   const fetchVehicles = async () => {
     setLoading(true);
     try {
+      console.log('🔍 Fetching vehicles...');
       const { data, error } = await getVehicles();
       if (error) throw error;
+      console.log('✅ Fetched vehicles:', data?.length || 0);
       setVehicles(data || []);
     } catch (error) {
-      console.error('Error fetching vehicles:', error);
+      console.error('❌ Error fetching vehicles:', error);
       setError("Failed to load vehicles");
       setVehicles([]);
     } finally {
@@ -94,6 +96,12 @@ export default function AdminVehicles() {
 
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
+    console.log('📷 Image files selected:', files.length);
+    
+    files.forEach((file, index) => {
+      console.log(`  ${index + 1}. ${file.name} - ${file.type} - ${Math.round(file.size / 1024)}KB`);
+    });
+    
     setImageFiles(files);
 
     // Clean up previous previews
@@ -129,12 +137,23 @@ export default function AdminVehicles() {
       return;
     }
     
-    setIsSubmitting(true);
+    setSaving(true);
     setError("");
     setSuccess("");
 
     try {
-      // Prepare vehicle data
+      console.log('🚀 FORM SUBMIT: Starting vehicle save...');
+      console.log('📝 Form data:', formData);
+      console.log('📷 Image files:', imageFiles.length, 'files');
+      
+      if (imageFiles.length > 0) {
+        console.log('📷 Image details:');
+        imageFiles.forEach((file, index) => {
+          console.log(`  ${index + 1}. ${file.name} - ${file.type} - ${Math.round(file.size / 1024)}KB`);
+        });
+      }
+
+      // Prepare vehicle data with type conversion
       const vehicleData = {
         ...formData,
         price: parseFloat(formData.price),
@@ -145,14 +164,33 @@ export default function AdminVehicles() {
         number_of_owners: parseInt(formData.number_of_owners)
       };
 
+      console.log('📊 Processed vehicle data:', vehicleData);
+
       let result;
       if (editingVehicle) {
+        console.log('🔄 Updating existing vehicle:', editingVehicle.id);
         result = await updateVehicle(editingVehicle.id, vehicleData, imageFiles);
       } else {
+        console.log('🆕 Creating new vehicle...');
         result = await createVehicle(vehicleData, imageFiles);
       }
 
-      if (result.error) throw result.error;
+      console.log('📋 Operation result:', result);
+
+      if (result.error) {
+        console.error('❌ Operation failed:', result.error);
+        throw result.error;
+      }
+
+      console.log('✅ Vehicle saved successfully:', result.data?.id);
+      console.log('📷 Final vehicle images:', result.data?.images?.length || 0);
+      
+      if (result.data?.images) {
+        console.log('🔗 Image URLs:');
+        result.data.images.forEach((img, index) => {
+          console.log(`  ${index + 1}. ${img.url} (Primary: ${img.isPrimary})`);
+        });
+      }
 
       setSuccess(editingVehicle ? 'Vehicle updated successfully!' : 'Vehicle added successfully!');
       resetForm();
@@ -160,10 +198,16 @@ export default function AdminVehicles() {
       
       setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
-      console.error('Error saving vehicle:', error);
-      setError(error.message || 'Failed to save vehicle. Please try again.');
+      console.error('❌ Form submission error:', error);
+      const errorMessage = error.message || 'Failed to save vehicle. Please try again.';
+      setError(errorMessage);
+      
+      // Add debugging info for network errors
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        setError(errorMessage + ' (Network error - check console for details)');
+      }
     } finally {
-      setIsSubmitting(false);
+      setSaving(false);
     }
   };
 
@@ -178,6 +222,7 @@ export default function AdminVehicles() {
   };
 
   const handleEdit = (vehicle) => {
+    console.log('✏️ Editing vehicle:', vehicle.id);
     setFormData({
       ...vehicle,
       sale_price: vehicle.sale_price || "",
@@ -201,6 +246,7 @@ export default function AdminVehicles() {
     if (!confirm('Are you sure you want to delete this vehicle?')) return;
 
     try {
+      console.log('🗑️ Deleting vehicle:', id);
       const { error } = await deleteVehicle(id);
       if (error) throw error;
       
@@ -208,22 +254,23 @@ export default function AdminVehicles() {
       fetchVehicles();
       setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
-      console.error('Error deleting vehicle:', error);
+      console.error('❌ Error deleting vehicle:', error);
       setError('Error deleting vehicle. Please try again.');
     }
   };
 
   const toggleFeatured = async (vehicle) => {
     try {
+      console.log('⭐ Toggling featured status for:', vehicle.id);
       const { error } = await updateVehicle(vehicle.id, { featured: !vehicle.featured });
       if (error) throw error;
       fetchVehicles();
     } catch (error) {
-      console.error('Error toggling featured status:', error);
+      console.error('❌ Error toggling featured status:', error);
     }
   };
 
-  // SIMPLIFIED: Get image URL with fallback
+  // Get image URL with fallback
   const getImageUrl = (vehicle) => {
     if (!vehicle.images || vehicle.images.length === 0) {
       return '/hero.jpg';
@@ -628,14 +675,14 @@ export default function AdminVehicles() {
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={saving}
                 className={`px-6 py-2 rounded-lg text-white font-semibold transition-colors ${
-                  isSubmitting
+                  saving
                     ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-blue-600 hover:bg-blue-700'
                 }`}
               >
-                {isSubmitting ? 'Saving...' : (editingVehicle ? 'Update Vehicle' : 'Add Vehicle')}
+                {saving ? 'Saving...' : (editingVehicle ? 'Update Vehicle' : 'Add Vehicle')}
               </button>
             </div>
           </form>
