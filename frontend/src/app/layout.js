@@ -1,10 +1,10 @@
-// frontend/src/app/layout.js
+// frontend/src/app/layout.js - FIXED MOBILE MENU OVERLAY ISSUE
 "use client";
 
 import "./globals.css";
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function RootLayout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -17,11 +17,34 @@ export default function RootLayout({ children }) {
     setMobileMenuOpen(false);
   };
 
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+      document.body.style.top = '0';
+    } else {
+      document.body.style.overflow = 'unset';
+      document.body.style.position = 'unset';
+      document.body.style.width = 'unset';
+      document.body.style.top = 'unset';
+    }
+
+    // Cleanup on unmount
+    return () => {
+      document.body.style.overflow = 'unset';
+      document.body.style.position = 'unset';
+      document.body.style.width = 'unset';
+      document.body.style.top = 'unset';
+    };
+  }, [mobileMenuOpen]);
+
   return (
     <html lang="en">
       <body className="antialiased bg-black text-white">
-        {/* Navigation Header */}
-        <header className="absolute top-0 left-0 w-full z-50 bg-black/90 backdrop-blur-sm">
+        {/* Navigation Header - FIXED Z-INDEX */}
+        <header className="absolute top-0 left-0 w-full z-[100] bg-black/90 backdrop-blur-sm">
           <div className="container mx-auto px-4 py-3 md:py-4">
             <nav className="flex items-center justify-between">
               {/* Logo */}
@@ -64,9 +87,9 @@ export default function RootLayout({ children }) {
                 </a>
               </div>
 
-              {/* Mobile Menu Button */}
+              {/* Mobile Menu Button - FIXED Z-INDEX */}
               <button 
-                className="md:hidden p-2 rounded-lg hover:bg-gray-800 transition-colors"
+                className="md:hidden p-2 rounded-lg hover:bg-gray-800 transition-colors relative z-[102]"
                 aria-label="Toggle mobile menu"
                 onClick={toggleMobileMenu}
               >
@@ -80,77 +103,122 @@ export default function RootLayout({ children }) {
               </button>
             </nav>
           </div>
+        </header>
 
-          {/* Mobile Menu Overlay */}
-          {mobileMenuOpen && (
-            <div className="md:hidden fixed inset-0 top-[60px] bg-black/95 backdrop-blur-md z-50">
-              <div className="container mx-auto px-4 py-6">
-                <div className="flex flex-col space-y-4">
+        {/* FIXED: Mobile Menu Overlay and Panel */}
+        {mobileMenuOpen && (
+          <>
+            {/* Full Screen Overlay - FIXED POSITIONING AND Z-INDEX */}
+            <div 
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99] md:hidden"
+              onClick={closeMobileMenu}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                width: '100vw',
+                height: '100vh',
+                zIndex: 99
+              }}
+            />
+            
+            {/* Mobile Menu Panel - FIXED POSITIONING AND Z-INDEX */}
+            <div 
+              className="fixed top-0 right-0 h-full w-80 max-w-[90vw] bg-black/95 backdrop-blur-md text-white z-[101] md:hidden transform transition-transform duration-300 ease-in-out overflow-y-auto"
+              style={{
+                position: 'fixed',
+                top: 0,
+                right: 0,
+                height: '100vh',
+                zIndex: 101,
+                transform: mobileMenuOpen ? 'translateX(0)' : 'translateX(100%)'
+              }}
+            >
+              <div className="p-6">
+                {/* Close Button */}
+                <div className="flex justify-end mb-6">
+                  <button
+                    onClick={closeMobileMenu}
+                    className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
+                    aria-label="Close menu"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Menu Items */}
+                <div className="flex flex-col space-y-1">
                   <Link 
                     href="/" 
-                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    className="text-lg py-4 px-4 hover:bg-gray-800 rounded-lg transition-colors border-b border-gray-800"
                     onClick={closeMobileMenu}
                   >
                     Home
                   </Link>
                   <Link 
                     href="/about" 
-                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    className="text-lg py-4 px-4 hover:bg-gray-800 rounded-lg transition-colors border-b border-gray-800"
                     onClick={closeMobileMenu}
                   >
                     About
                   </Link>
                   <Link 
                     href="/services" 
-                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    className="text-lg py-4 px-4 hover:bg-gray-800 rounded-lg transition-colors border-b border-gray-800"
                     onClick={closeMobileMenu}
                   >
                     Services
                   </Link>
                   <Link 
                     href="/inventory" 
-                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    className="text-lg py-4 px-4 hover:bg-gray-800 rounded-lg transition-colors border-b border-gray-800"
                     onClick={closeMobileMenu}
                   >
                     Inventory
                   </Link>
                   <Link 
                     href="/specials" 
-                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors text-yellow-400 font-semibold"
+                    className="text-lg py-4 px-4 hover:bg-gray-800 rounded-lg transition-colors text-yellow-400 font-semibold border-b border-gray-800"
                     onClick={closeMobileMenu}
                   >
                     Specials
                   </Link>
                   <Link 
                     href="/appointment" 
-                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    className="text-lg py-4 px-4 hover:bg-gray-800 rounded-lg transition-colors border-b border-gray-800"
                     onClick={closeMobileMenu}
                   >
                     Book Appointment
                   </Link>
                   <Link 
                     href="/contact" 
-                    className="text-lg py-3 px-4 hover:bg-gray-800 rounded-lg transition-colors"
+                    className="text-lg py-4 px-4 hover:bg-gray-800 rounded-lg transition-colors border-b border-gray-800"
                     onClick={closeMobileMenu}
                   >
                     Contact
                   </Link>
                   
                   {/* Call Button */}
-                  <a 
-                    href="tel:3529335181" 
-                    className="bg-blue-600 hover:bg-blue-700 py-3 px-4 rounded-lg font-semibold text-center transition-all"
-                    onClick={closeMobileMenu}
-                  >
-                    <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                    </svg>
-                    Call: (352) 933-5181
-                  </a>
+                  <div className="pt-4">
+                    <a 
+                      href="tel:3529335181" 
+                      className="bg-blue-600 hover:bg-blue-700 py-4 px-4 rounded-lg font-semibold text-center transition-all block"
+                      onClick={closeMobileMenu}
+                    >
+                      <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                      </svg>
+                      Call: (352) 933-5181
+                    </a>
+                  </div>
 
-                  {/* Business Hours in Mobile Menu */}
-                  <div className="border-t border-gray-800 pt-4 mt-4">
-                    <p className="text-sm text-gray-400 px-4">Hours:</p>
+                  {/* Business Hours */}
+                  <div className="border-t border-gray-800 pt-6 mt-6">
+                    <p className="text-sm text-gray-400 px-4 mb-2">Hours:</p>
                     <p className="text-sm px-4">Mon-Fri: 8AM-6PM</p>
                     <p className="text-sm px-4">Saturday: 9AM-3PM</p>
                     <p className="text-sm px-4">Sunday: Closed</p>
@@ -158,16 +226,16 @@ export default function RootLayout({ children }) {
                 </div>
               </div>
             </div>
-          )}
-        </header>
+          </>
+        )}
 
-        {/* Main Content */}
-        <main className={mobileMenuOpen ? "overflow-hidden" : ""}>
+        {/* Main Content - FIXED Z-INDEX */}
+        <main className={`relative z-[1] ${mobileMenuOpen ? "pointer-events-none" : ""}`}>
           {children}
         </main>
 
         {/* Footer - Simplified for Mobile */}
-        <footer className="bg-gray-900 text-white py-8 md:py-12 px-4">
+        <footer className="bg-gray-900 text-white py-8 md:py-12 px-4 relative z-[1]">
           <div className="container mx-auto">
             {/* Newsletter Signup - Responsive */}
             <div className="bg-blue-600 rounded-lg p-6 md:p-8 mb-8 md:mb-12 text-center">
@@ -275,8 +343,8 @@ export default function RootLayout({ children }) {
           </div>
         </footer>
 
-        {/* Floating Action Buttons - Better Mobile Positioning */}
-        <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col space-y-3 z-40">
+        {/* Floating Action Buttons - FIXED Z-INDEX */}
+        <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 flex flex-col space-y-3 z-[40]">
           <a 
             href="tel:3529335181"
             className="bg-green-600 hover:bg-green-700 text-white p-3 md:p-4 rounded-full shadow-lg transition-all transform hover:scale-110"
