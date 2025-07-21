@@ -133,85 +133,31 @@ export default function About() {
         </div>
       </section>
 
-      {/* Team Section */}
-      <section className="py-16 px-4 bg-gray-900">
-        <div className="container mx-auto max-w-6xl">
-          <h2 className="text-3xl font-bold text-center mb-12">Meet Our Team</h2>
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="relative w-48 h-48 mx-auto mb-4 rounded-full overflow-hidden">
-                <Image
-                  src="/hero.jpg" // Replace with actual team member photo
-                  alt="Team Member"
-                  fill
-                  className="object-cover"
-                />
-              </div>
-              <h3 className="text-xl font-bold">John Smith</h3>
-              <p className="text-blue-400 mb-2">Owner & Master Technician</p>
-              <p className="text-gray-300 text-sm">
-                20+ years experience, ASE Master Certified
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="relative w-48 h-48 mx-auto mb-4 rounded-full overflow-hidden">
-                <Image
-                  src="/hero.jpg" // Replace with actual team member photo
-                  alt="Team Member"
-                  fill
-                  className="object-cover"
-                />
-              </div>
-              <h3 className="text-xl font-bold">Mike Johnson</h3>
-              <p className="text-blue-400 mb-2">Service Manager</p>
-              <p className="text-gray-300 text-sm">
-                15+ years experience, Customer service expert
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="relative w-48 h-48 mx-auto mb-4 rounded-full overflow-hidden">
-                <Image
-                  src="/hero.jpg" // Replace with actual team member photo
-                  alt="Team Member"
-                  fill
-                  className="object-cover"
-                />
-              </div>
-              <h3 className="text-xl font-bold">Sarah Davis</h3>
-              <p className="text-blue-400 mb-2">Sales Manager</p>
-              <p className="text-gray-300 text-sm">
-                10+ years experience, Finance specialist
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Awards & Certifications */}
-      <section className="py-16 px-4 bg-black">
+      <section className="py-16 px-4 bg-gray-900">
         <div className="container mx-auto max-w-6xl">
           <h2 className="text-3xl font-bold text-center mb-12">Awards & Certifications</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             <div className="text-center">
-              <div className="bg-gray-900 rounded-lg p-6 hover:bg-gray-800 transition-colors">
+              <div className="bg-gray-800 rounded-lg p-6 hover:bg-gray-700 transition-colors">
                 <div className="text-5xl mb-4">🏆</div>
                 <p className="font-semibold">ASE Certified</p>
               </div>
             </div>
             <div className="text-center">
-              <div className="bg-gray-900 rounded-lg p-6 hover:bg-gray-800 transition-colors">
+              <div className="bg-gray-800 rounded-lg p-6 hover:bg-gray-700 transition-colors">
                 <div className="text-5xl mb-4">⭐</div>
                 <p className="font-semibold">5-Star Reviews</p>
               </div>
             </div>
             <div className="text-center">
-              <div className="bg-gray-900 rounded-lg p-6 hover:bg-gray-800 transition-colors">
+              <div className="bg-gray-800 rounded-lg p-6 hover:bg-gray-700 transition-colors">
                 <div className="text-5xl mb-4">🛡️</div>
                 <p className="font-semibold">BBB Accredited</p>
               </div>
             </div>
             <div className="text-center">
-              <div className="bg-gray-900 rounded-lg p-6 hover:bg-gray-800 transition-colors">
+              <div className="bg-gray-800 rounded-lg p-6 hover:bg-gray-700 transition-colors">
                 <div className="text-5xl mb-4">🤝</div>
                 <p className="font-semibold">Community Partner</p>
               </div>

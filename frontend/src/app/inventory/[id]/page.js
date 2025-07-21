@@ -1,4 +1,4 @@
-// frontend/src/app/inventory/[id]/page.js
+// frontend/src/app/inventory/[id]/page.js - FIXED SALE PRICING DISPLAY
 "use client";
 
 import Image from "next/image";
@@ -280,6 +280,13 @@ export default function VehicleDetail() {
                     CARFAX Available
                   </div>
                 )}
+                
+                {/* FIXED: Sale badge on detail page */}
+                {vehicle.sale_price && (
+                  <div className="absolute top-4 right-4 bg-red-600 text-white px-3 py-1 rounded-full text-sm font-bold">
+                    SALE
+                  </div>
+                )}
               </div>
               
               {/* Thumbnail Gallery */}
@@ -319,30 +326,50 @@ export default function VehicleDetail() {
                 <p className="text-gray-400 mb-4">
                   Stock #: {vehicle.stock_number || 'N/A'} {vehicle.vin && `| VIN: ${vehicle.vin}`}
                 </p>
-                <div className="flex items-baseline gap-4 mb-6">
+
+                {/* FIXED: Sale pricing display on detail page */}
+                <div className="mb-6">
                   {vehicle.sale_price ? (
-                    <>
-                      <p className="text-4xl font-bold text-blue-400">
-                        ${vehicle.sale_price?.toLocaleString()}
+                    /* Sale Price Layout */
+                    <div className="bg-green-900/30 border border-green-500 rounded-lg p-4 mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">SALE</span>
+                        <span className="text-green-400 font-bold">Special Price!</span>
+                      </div>
+                      <div className="flex items-baseline gap-4">
+                        <p className="text-4xl font-bold text-green-400">
+                          ${vehicle.sale_price?.toLocaleString()}
+                        </p>
+                        <div className="text-gray-400">
+                          <p className="text-sm">Regular Price:</p>
+                          <p className="text-xl line-through">
+                            ${vehicle.price?.toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-green-300 font-bold mt-2">
+                        You Save: ${((vehicle.price || 0) - (vehicle.sale_price || 0)).toLocaleString()}!
                       </p>
-                      <p className="text-2xl text-gray-400 line-through">
-                        ${vehicle.price?.toLocaleString()}
-                      </p>
-                    </>
+                    </div>
                   ) : (
-                    <p className="text-4xl font-bold text-blue-400">
-                      ${vehicle.price?.toLocaleString() || '0'}
-                    </p>
+                    /* Regular Price Layout */
+                    <div className="flex items-baseline gap-4">
+                      <p className="text-4xl font-bold text-blue-400">
+                        ${vehicle.price?.toLocaleString() || '0'}
+                      </p>
+                    </div>
                   )}
+                  
                   <p className="text-lg text-gray-400">
                     {vehicle.mileage?.toLocaleString() || '0'} miles
                   </p>
+                  
+                  {vehicle.monthly_payment && (
+                    <p className="text-lg text-green-400 mt-2">
+                      As low as ${vehicle.monthly_payment}/month with approved credit*
+                    </p>
+                  )}
                 </div>
-                {vehicle.monthly_payment && (
-                  <p className="text-lg text-green-400 mb-4">
-                    As low as ${vehicle.monthly_payment}/month with approved credit*
-                  </p>
-                )}
               </div>
 
               {/* Quick Actions */}

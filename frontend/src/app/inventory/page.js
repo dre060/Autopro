@@ -1,4 +1,4 @@
-// frontend/src/app/inventory/page.js
+// frontend/src/app/inventory/page.js - FIXED SALE PRICING DISPLAY
 "use client";
 
 import Image from "next/image";
@@ -405,15 +405,29 @@ export default function Inventory() {
                           }}
                         />
                         
-                        {/* Price Badge */}
-                        <div className="absolute top-4 right-4 bg-blue-600 text-white px-3 py-1 rounded font-bold">
-                          ${vehicle.price?.toLocaleString() || 'N/A'}
-                        </div>
+                        {/* FIXED: Sale Badge with Sale Price */}
+                        {vehicle.sale_price ? (
+                          <div className="absolute top-4 left-4">
+                            {/* Sale Badge */}
+                            <div className="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold mb-1">
+                              SALE
+                            </div>
+                            {/* Sale Price under the badge */}
+                            <div className="bg-green-600 text-white px-3 py-1 rounded font-bold text-sm">
+                              ${vehicle.sale_price?.toLocaleString()}
+                            </div>
+                          </div>
+                        ) : (
+                          /* Regular Price Badge (when no sale) */
+                          <div className="absolute top-4 right-4 bg-blue-600 text-white px-3 py-1 rounded font-bold">
+                            ${vehicle.price?.toLocaleString() || 'N/A'}
+                          </div>
+                        )}
                         
-                        {/* Sale Badge */}
+                        {/* FIXED: Crossed out regular price (when on sale) */}
                         {vehicle.sale_price && (
-                          <div className="absolute top-4 left-4 bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">
-                            SALE
+                          <div className="absolute top-4 right-4 bg-gray-800/80 text-gray-300 px-2 py-1 rounded text-sm">
+                            <span className="line-through">${vehicle.price?.toLocaleString()}</span>
                           </div>
                         )}
                         
@@ -448,6 +462,25 @@ export default function Inventory() {
                             <span className="text-gray-500">Trans:</span> {vehicle.transmission || 'N/A'}
                           </div>
                         </div>
+
+                        {/* FIXED: Show sale pricing in card body */}
+                        {vehicle.sale_price && (
+                          <div className="mb-4 p-3 bg-green-900/30 border border-green-500 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-green-400 font-bold text-lg">
+                                  ${vehicle.sale_price?.toLocaleString()}
+                                </p>
+                                <p className="text-gray-400 text-sm line-through">
+                                  Was ${vehicle.price?.toLocaleString()}
+                                </p>
+                              </div>
+                              <div className="text-green-400 font-bold">
+                                SAVE ${((vehicle.price || 0) - (vehicle.sale_price || 0)).toLocaleString()}!
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Financing Info */}
                         {vehicle.financing_available && (
