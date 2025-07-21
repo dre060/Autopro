@@ -28,11 +28,13 @@ export default function Inventory() {
     
     let fixedVehicle = { ...vehicle };
     
-    // 2025 Toyota Camry (Stock: AP433889)
+    // 2025 Toyota Camry (Stock: AP433889)  
     if (vehicleKey.includes('2025') && vehicleKey.includes('toyota') && vehicleKey.includes('camry')) {
       console.log('✅ Matched: 2025 Toyota Camry - fixing images and price');
       
-      fixedVehicle.sale_price = 27500;
+      // Fix pricing: $39k regular (crossed out), $27.5k sale price (main)
+      fixedVehicle.price = 39000;  // This becomes the crossed-out price
+      fixedVehicle.sale_price = 27500;  // This becomes the main price
       fixedVehicle.images = [
         {
           url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/Toyotacam1.jpeg',

@@ -54,8 +54,9 @@ export default function VehicleDetail() {
           isPrimary: false
         }
       ];
-      // Fix sale price
-      fixedVehicle.sale_price = 27500;
+      // Fix pricing: $39k regular (crossed out), $27.5k sale price (main)
+      fixedVehicle.price = 39000;  // This becomes the crossed-out price
+      fixedVehicle.sale_price = 27500;  // This becomes the main price
     }
     
     // 2022 Toyota Tundra (Stock: AP677595)
@@ -319,12 +320,18 @@ export default function VehicleDetail() {
                   Stock #: {vehicle.stock_number || 'N/A'} {vehicle.vin && `| VIN: ${vehicle.vin}`}
                 </p>
                 <div className="flex items-baseline gap-4 mb-6">
-                  <p className="text-4xl font-bold text-blue-400">
-                    ${vehicle.price?.toLocaleString() || '0'}
-                  </p>
-                  {vehicle.sale_price && (
-                    <p className="text-2xl text-gray-400 line-through">
-                      ${vehicle.sale_price.toLocaleString()}
+                  {vehicle.sale_price ? (
+                    <>
+                      <p className="text-4xl font-bold text-blue-400">
+                        ${vehicle.sale_price?.toLocaleString()}
+                      </p>
+                      <p className="text-2xl text-gray-400 line-through">
+                        ${vehicle.price?.toLocaleString()}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-4xl font-bold text-blue-400">
+                      ${vehicle.price?.toLocaleString() || '0'}
                     </p>
                   )}
                   <p className="text-lg text-gray-400">
