@@ -1,4 +1,4 @@
-// frontend/src/app/layout.js - FIXED MOBILE MENU OVERLAY ISSUE
+// frontend/src/app/layout.js - FIXED WITH FAVICONS
 "use client";
 
 import "./globals.css";
@@ -42,6 +42,82 @@ export default function RootLayout({ children }) {
 
   return (
     <html lang="en">
+      <head>
+        {/* Primary Meta Tags */}
+        <title>AUTO PRO Repairs & Sales | Leesburg, FL</title>
+        <meta name="title" content="AUTO PRO Repairs & Sales | Leesburg, FL" />
+        <meta name="description" content="Professional auto repair and quality used cars in Leesburg, FL. Expert service, honest pricing, and reliable vehicles." />
+        <meta name="keywords" content="auto repair, used cars, Leesburg FL, car service, vehicle sales" />
+        <meta name="robots" content="index, follow" />
+        <meta name="language" content="English" />
+        <meta name="author" content="AUTO PRO Repairs & Sales" />
+
+        {/* Viewport */}
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+        {/* Favicon Package */}
+        <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/android-chrome-512x512.png" />
+        <link rel="manifest" href="/site.webmanifest" />
+
+        {/* Theme Colors */}
+        <meta name="theme-color" content="#1f2937" />
+        <meta name="msapplication-TileColor" content="#1f2937" />
+
+        {/* Open Graph / Facebook */}
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://www.autoprorepairs.com/" />
+        <meta property="og:title" content="AUTO PRO Repairs & Sales | Leesburg, FL" />
+        <meta property="og:description" content="Professional auto repair and quality used cars in Leesburg, FL. Expert service, honest pricing, and reliable vehicles." />
+        <meta property="og:image" content="https://www.autoprorepairs.com/logo.jpg" />
+        <meta property="og:site_name" content="AUTO PRO Repairs & Sales" />
+        <meta property="og:locale" content="en_US" />
+
+        {/* Twitter */}
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:url" content="https://www.autoprorepairs.com/" />
+        <meta property="twitter:title" content="AUTO PRO Repairs & Sales | Leesburg, FL" />
+        <meta property="twitter:description" content="Professional auto repair and quality used cars in Leesburg, FL. Expert service, honest pricing, and reliable vehicles." />
+        <meta property="twitter:image" content="https://www.autoprorepairs.com/logo.jpg" />
+
+        {/* Additional SEO */}
+        <meta name="geo.region" content="US-FL" />
+        <meta name="geo.placename" content="Leesburg" />
+        <meta name="geo.position" content="28.8108;-81.8773" />
+        <meta name="ICBM" content="28.8108, -81.8773" />
+
+        {/* Business Schema */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "AutoRepair",
+            "name": "AUTO PRO Repairs & Sales",
+            "image": "https://www.autoprorepairs.com/logo.jpg",
+            "telephone": "(352) 933-5181",
+            "email": "service@autoprorepairs.com",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": "806 Hood Ave",
+              "addressLocality": "Leesburg",
+              "addressRegion": "FL",
+              "postalCode": "34748",
+              "addressCountry": "US"
+            },
+            "url": "https://www.autoprorepairs.com",
+            "openingHours": [
+              "Mo-Fr 08:00-18:00",
+              "Sa 09:00-15:00"
+            ],
+            "priceRange": "$",
+            "paymentAccepted": "Cash, Credit Card, Financing",
+            "currenciesAccepted": "USD"
+          })}
+        </script>
+      </head>
       <body className="antialiased bg-black text-white">
         {/* Navigation Header - FIXED Z-INDEX */}
         <header className="absolute top-0 left-0 w-full z-[100] bg-black/90 backdrop-blur-sm">
