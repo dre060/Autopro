@@ -19,17 +19,21 @@ export default function Inventory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // HARDCODED IMAGE FIX - Replace fallback images with real Supabase URLs
-  const getFixedImages = (vehicle) => {
+  // HARDCODED IMAGE AND PRICE FIX - Replace fallback images with real Supabase URLs
+  const getFixedVehicleData = (vehicle) => {
     const vehicleKey = `${vehicle.year} ${vehicle.make} ${vehicle.model}`.toLowerCase();
     const stockNumber = vehicle.stock_number || '';
     
     console.log(`🔍 Checking vehicle: ${vehicleKey} (Stock: ${stockNumber})`);
     
+    let fixedVehicle = { ...vehicle };
+    
     // 2025 Toyota Camry (Stock: AP433889)
     if (vehicleKey.includes('2025') && vehicleKey.includes('toyota') && vehicleKey.includes('camry')) {
-      console.log('✅ Matched: 2025 Toyota Camry');
-      return [
+      console.log('✅ Matched: 2025 Toyota Camry - fixing images and price');
+      
+      fixedVehicle.sale_price = 27500;
+      fixedVehicle.images = [
         {
           url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/Toyotacam1.jpeg',
           alt: '2025 Toyota Camry',
@@ -49,9 +53,9 @@ export default function Inventory() {
     }
     
     // 2022 Toyota Tundra (Stock: AP677595)
-    if (vehicleKey.includes('2022') && vehicleKey.includes('toyota') && vehicleKey.includes('tundra')) {
+    else if (vehicleKey.includes('2022') && vehicleKey.includes('toyota') && vehicleKey.includes('tundra')) {
       console.log('✅ Matched: 2022 Toyota Tundra');
-      return [
+      fixedVehicle.images = [
         {
           url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052647603-vssyt7.jpg',
           alt: '2022 Toyota Tundra',
@@ -66,9 +70,9 @@ export default function Inventory() {
     }
     
     // 2015 Kensworth T700 (Stock: AP824028)
-    if (vehicleKey.includes('2015') && vehicleKey.includes('kensworth')) {
+    else if (vehicleKey.includes('2015') && vehicleKey.includes('kensworth')) {
       console.log('✅ Matched: 2015 Kensworth T700');
-      return [
+      fixedVehicle.images = [
         {
           url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052819637-l1j3u0.jpg',
           alt: '2015 Kensworth T700',
@@ -82,19 +86,23 @@ export default function Inventory() {
       ];
     }
     
-    console.log('⚠️ No match found, using original images');
-    // Return original images if no match (with fallback)
-    if (vehicle.images && vehicle.images.length > 0) {
-      return vehicle.images;
+    else {
+      console.log('⚠️ No match found, using original images');
+      // Return original images if no match (with fallback)
+      if (vehicle.images && vehicle.images.length > 0) {
+        fixedVehicle.images = vehicle.images;
+      } else {
+        // Ultimate fallback
+        fixedVehicle.images = [{
+          url: '/hero.jpg',
+          alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+          isPrimary: true,
+          isFallback: true
+        }];
+      }
     }
     
-    // Ultimate fallback
-    return [{
-      url: '/hero.jpg',
-      alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-      isPrimary: true,
-      isFallback: true
-    }];
+    return fixedVehicle;
   };
 
   useEffect(() => {
@@ -117,15 +125,15 @@ export default function Inventory() {
       const data = await response.json();
       console.log('🚗 Fetched vehicles:', data);
       
-      // Apply image fixes to each vehicle
+      // Apply fixes to each vehicle (images and prices)
       const processedVehicles = (data.vehicles || []).map(vehicle => {
-        const fixedImages = getFixedImages(vehicle);
-        console.log(`🔧 Fixed images for ${vehicle.year} ${vehicle.make} ${vehicle.model}:`, fixedImages);
+        const fixedVehicle = getFixedVehicleData(vehicle);
+        console.log(`🔧 Fixed vehicle data for ${vehicle.year} ${vehicle.make} ${vehicle.model}:`, {
+          images: fixedVehicle.images.length,
+          salePrice: fixedVehicle.sale_price
+        });
         
-        return {
-          ...vehicle,
-          images: fixedImages
-        };
+        return fixedVehicle;
       });
       
       setVehicles(processedVehicles);
