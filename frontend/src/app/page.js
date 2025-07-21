@@ -1,4 +1,4 @@
-// frontend/src/app/page.js
+// frontend/src/app/page.js - FIXED PHONE NUMBER
 "use client";
 
 import Image from "next/image";
@@ -11,6 +11,10 @@ export default function Home() {
   const [selectedModel, setSelectedModel] = useState("All Models");
   const [featuredVehicles, setFeaturedVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Get phone number from environment - FIXED
+  const phoneNumber = process.env.NEXT_PUBLIC_PHONE || "352-933-5181";
+  const phoneNumberClean = phoneNumber.replace(/[^0-9]/g, ''); // Remove formatting for tel: links
 
   useEffect(() => {
     fetchFeaturedVehicles();
@@ -68,10 +72,10 @@ export default function Home() {
               Book an Appointment
             </Link>
             <a 
-              href="tel:3523395181"
+              href={`tel:${phoneNumberClean}`}
               className="bg-white hover:bg-gray-100 text-black px-6 py-3 rounded font-semibold transition-all transform hover:scale-105 text-center"
             >
-              Call: (352) 339-5181
+              Call: {phoneNumber}
             </a>
           </div>
 
@@ -281,7 +285,7 @@ export default function Home() {
               <p className="text-gray-300 mb-4 text-sm md:text-base">
                 Stuck on the road? We offer reliable towing services throughout Leesburg.
               </p>
-              <a href="tel:3523395181" className="text-blue-400 hover:text-blue-300 text-sm">
+              <a href={`tel:${phoneNumberClean}`} className="text-blue-400 hover:text-blue-300 text-sm">
                 Call Now →
               </a>
             </div>
