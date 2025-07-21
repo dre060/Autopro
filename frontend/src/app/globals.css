@@ -1,6 +1,58 @@
-/* frontend/src/app/globals.css - ADD THESE MOBILE MENU FIXES */
+/* frontend/src/app/globals.css - COMPLETE UPDATED VERSION */
 
-/* Mobile Menu Overlay Fixes */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ====================================================================== */
+/* BASE STYLES */
+/* ====================================================================== */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  line-height: 1.6;
+  color: #ffffff;
+  background-color: #000000;
+  overflow-x: hidden;
+}
+
+/* Text Selection */
+::selection {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+::-moz-selection {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+/* Focus Styles for Accessibility */
+*:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Remove outline for mouse users */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ====================================================================== */
+/* MOBILE MENU OVERLAY FIXES */
+/* ====================================================================== */
+
+/* Mobile Menu Overlay */
 .mobile-menu-overlay {
   position: fixed;
   top: 0;
@@ -10,13 +62,16 @@
   background-color: rgba(0, 0, 0, 0.5);
   z-index: 9998;
   transition: opacity 0.3s ease-in-out;
+  backdrop-filter: blur(2px);
 }
 
+/* Mobile Menu Panel */
 .mobile-menu-panel {
   position: fixed;
   top: 0;
   right: 0;
   height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for better mobile support */
   width: 320px;
   max-width: 90vw;
   background-color: #000000;
@@ -25,6 +80,7 @@
   transform: translateX(100%);
   transition: transform 0.3s ease-in-out;
   overflow-y: auto;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
 }
 
 .mobile-menu-panel.open {
@@ -53,19 +109,12 @@ body.mobile-menu-open {
   background-color: #ffffff;
   transition: all 0.3s ease-in-out;
   transform-origin: center;
-}
-
-.hamburger-line:nth-child(1) {
-  transform: translateY(-6px);
-}
-
-.hamburger-line:nth-child(3) {
-  transform: translateY(6px);
+  margin: 3px 0;
 }
 
 /* When menu is open, transform hamburger to X */
 .hamburger-open .hamburger-line:nth-child(1) {
-  transform: rotate(45deg) translateY(0);
+  transform: rotate(45deg) translate(6px, 6px);
 }
 
 .hamburger-open .hamburger-line:nth-child(2) {
@@ -73,7 +122,7 @@ body.mobile-menu-open {
 }
 
 .hamburger-open .hamburger-line:nth-child(3) {
-  transform: rotate(-45deg) translateY(0);
+  transform: rotate(-45deg) translate(6px, -6px);
 }
 
 /* Mobile menu item hover effects */
@@ -84,10 +133,13 @@ body.mobile-menu-open {
   text-decoration: none;
   border-bottom: 1px solid #333333;
   transition: background-color 0.2s ease-in-out;
+  font-size: 18px;
+  font-weight: 500;
 }
 
 .mobile-menu-item:hover {
   background-color: #333333;
+  color: #3b82f6;
 }
 
 .mobile-menu-item.active {
@@ -108,19 +160,43 @@ body.mobile-menu-open {
   z-index: 9999 !important;
 }
 
-/* Additional mobile-specific fixes */
-@media (max-width: 1023px) {
-  /* Ensure mobile menu takes full height on all mobile devices */
-  .mobile-menu-panel {
-    height: 100vh;
-    height: 100dvh; /* Dynamic viewport height for better mobile support */
-  }
-  
-  /* Prevent horizontal scrolling when menu is open */
-  .mobile-menu-open {
-    overflow-x: hidden;
-  }
+/* ====================================================================== */
+/* EMERGENCY MOBILE MENU FIXES */
+/* ====================================================================== */
+
+/* Force mobile menu to appear above all content */
+.mobile-menu,
+.hamburger-menu,
+.nav-menu-mobile,
+[class*="mobile-nav"],
+[class*="burger-menu"] {
+  position: fixed !important;
+  z-index: 9999 !important;
 }
+
+/* Prevent scrolling when menu is open */
+body.menu-open {
+  overflow: hidden !important;
+  position: fixed !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Hamburger button should stay visible and on top */
+.hamburger-button,
+.menu-toggle,
+[class*="hamburger"],
+[class*="burger-btn"] {
+  position: relative !important;
+  z-index: 10001 !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer;
+}
+
+/* ====================================================================== */
+/* ANIMATIONS */
+/* ====================================================================== */
 
 /* Smooth animations for better UX */
 .fade-in {
@@ -129,6 +205,14 @@ body.mobile-menu-open {
 
 .slide-in-right {
   animation: slideInRight 0.3s ease-in-out;
+}
+
+.slide-in-left {
+  animation: slideInLeft 0.3s ease-in-out;
+}
+
+.bounce-in {
+  animation: bounceIn 0.6s ease-out;
 }
 
 @keyframes fadeIn {
@@ -149,9 +233,594 @@ body.mobile-menu-open {
   }
 }
 
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes bounceIn {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Custom animation classes */
+.animate-fadeInDown {
+  animation: fadeInDown 1s ease-out;
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 1s ease-out;
+}
+
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animation-delay-400 {
+  animation-delay: 400ms;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -100%, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 100%, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* ====================================================================== */
+/* BUTTON STYLES */
+/* ====================================================================== */
+
+.btn {
+  display: inline-block;
+  padding: 12px 24px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.btn-primary {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background-color: #2563eb;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.btn-secondary {
+  background-color: transparent;
+  color: #3b82f6;
+  border: 2px solid #3b82f6;
+}
+
+.btn-secondary:hover {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+.btn-success {
+  background-color: #10b981;
+  color: #ffffff;
+}
+
+.btn-success:hover {
+  background-color: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.btn-danger {
+  background-color: #ef4444;
+  color: #ffffff;
+}
+
+.btn-danger:hover {
+  background-color: #dc2626;
+}
+
+.btn-lg {
+  padding: 16px 32px;
+  font-size: 18px;
+}
+
+.btn-sm {
+  padding: 8px 16px;
+  font-size: 14px;
+}
+
+/* ====================================================================== */
+/* FORM STYLES */
+/* ====================================================================== */
+
+.form-group {
+  margin-bottom: 24px;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.form-input,
+.form-textarea,
+.form-select {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  background-color: #ffffff;
+  color: #111827;
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-error {
+  border-color: #ef4444;
+}
+
+.form-error:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.error-message {
+  color: #ef4444;
+  font-size: 14px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.success-message {
+  color: #10b981;
+  font-size: 14px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ====================================================================== */
+/* CARD STYLES */
+/* ====================================================================== */
+
+.card {
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.card-header {
+  padding: 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.card-body {
+  padding: 24px;
+}
+
+.card-footer {
+  padding: 24px;
+  background-color: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* ====================================================================== */
+/* LOADING STATES */
+/* ====================================================================== */
+
+.loading-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #f3f4f6;
+  border-radius: 50%;
+  border-top-color: #3b82f6;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ====================================================================== */
+/* ALERT STYLES */
+/* ====================================================================== */
+
+.alert {
+  padding: 16px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  position: relative;
+}
+
+.alert-success {
+  background-color: #d1fae5;
+  border-color: #10b981;
+  color: #065f46;
+}
+
+.alert-error {
+  background-color: #fee2e2;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.alert-warning {
+  background-color: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+
+.alert-info {
+  background-color: #dbeafe;
+  border-color: #3b82f6;
+  color: #1e40af;
+}
+
+.alert-dismissible {
+  padding-right: 50px;
+}
+
+.alert-close {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.alert-close:hover {
+  opacity: 1;
+}
+
+/* ====================================================================== */
+/* UTILITY CLASSES */
+/* ====================================================================== */
+
+.text-shadow {
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.text-shadow-lg {
+  text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+.backdrop-blur {
+  backdrop-filter: blur(8px);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hover-scale:hover {
+  transform: scale(1.05);
+}
+
+.hover-scale-sm:hover {
+  transform: scale(1.02);
+}
+
+.transition-all {
+  transition: all 0.3s ease;
+}
+
+/* ====================================================================== */
+/* RESPONSIVE UTILITIES */
+/* ====================================================================== */
+
+/* Container with max-width */
+.container-custom {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+@media (min-width: 640px) {
+  .container-custom {
+    max-width: 640px;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+@media (min-width: 768px) {
+  .container-custom {
+    max-width: 768px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container-custom {
+    max-width: 1024px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .container-custom {
+    max-width: 1280px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .container-custom {
+    max-width: 1536px;
+  }
+}
+
+/* ====================================================================== */
+/* MOBILE-SPECIFIC FIXES */
+/* ====================================================================== */
+
+@media (max-width: 1023px) {
+  /* Ensure mobile menu takes full height on all mobile devices */
+  .mobile-menu-panel {
+    height: 100vh;
+    height: 100dvh; /* Dynamic viewport height for better mobile support */
+  }
+  
+  /* Prevent horizontal scrolling when menu is open */
+  .mobile-menu-open {
+    overflow-x: hidden;
+  }
+  
+  /* Ensure navigation header stays on top */
+  nav,
+  header {
+    position: relative !important;
+    z-index: 50 !important;
+  }
+  
+  /* Force all page sections below navigation */
+  section,
+  .section,
+  main > *,
+  .page-content > * {
+    position: relative !important;
+    z-index: 1 !important;
+  }
+  
+  /* Touch-friendly spacing */
+  .btn {
+    min-height: 44px;
+    padding: 12px 24px;
+  }
+  
+  /* Larger text for mobile */
+  .mobile-text-lg {
+    font-size: 18px;
+    line-height: 1.4;
+  }
+}
+
+/* ====================================================================== */
+/* PRINT STYLES */
+/* ====================================================================== */
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .print-only {
+    display: block !important;
+  }
+  
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
+}
+
+/* ====================================================================== */
+/* HIGH CONTRAST MODE */
+/* ====================================================================== */
+
+@media (prefers-contrast: high) {
+  .btn {
+    border: 2px solid currentColor;
+  }
+  
+  .card {
+    border: 2px solid #000;
+  }
+  
+  .form-input,
+  .form-textarea,
+  .form-select {
+    border: 2px solid #000;
+  }
+}
+
+/* ====================================================================== */
+/* REDUCED MOTION */
+/* ====================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ====================================================================== */
+/* DARK MODE (if needed in the future) */
+/* ====================================================================== */
+
+@media (prefers-color-scheme: dark) {
+  .auto-dark {
+    background-color: #111827;
+    color: #f9fafb;
+  }
+  
+  .auto-dark .card {
+    background-color: #1f2937;
+    color: #f9fafb;
+  }
+  
+  .auto-dark .form-input,
+  .auto-dark .form-textarea,
+  .auto-dark .form-select {
+    background-color: #374151;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+}
+
+/* ====================================================================== */
+/* BROWSER-SPECIFIC FIXES */
+/* ====================================================================== */
+
 /* Fix for iOS Safari */
 @supports (-webkit-touch-callout: none) {
   .mobile-menu-panel {
     height: -webkit-fill-available;
   }
+  
+  /* Fix for iOS input zoom */
+  .form-input,
+  .form-textarea,
+  .form-select {
+    font-size: 16px;
+  }
 }
+
+/* Fix for older Android browsers */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .mobile-menu-panel {
+    -webkit-transform: translateX(100%);
+  }
+  
+  .mobile-menu-panel.open {
+    -webkit-transform: translateX(0);
+  }
+}
+
+/* ====================================================================== */
+/* CUSTOM SCROLLBAR */
+/* ====================================================================== */
+
+/* Webkit browsers */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 #f1f1f1;
+}
+
+/* ====================================================================== */
+/* END OF STYLES */
+/* ====================================================================== */
