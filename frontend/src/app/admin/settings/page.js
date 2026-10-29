@@ -1,642 +1,269 @@
 // frontend/src/app/admin/settings/page.js
 "use client";
 
-import { useState, useEffect } from "react";
-import AdminLayout from "../AdminLayout";
+import { useEffect, useState } from "react";
+import { Save, Store, Percent, FileText, Users, KeyRound, ShieldCheck, Activity, X, Plus, CheckCircle2, XCircle, RefreshCw, Receipt, BookOpen } from "lucide-react";
+import { TERMS, QB_DEFAULTS } from "@/lib/invoicing";
+import { CustomerNotificationSettings, DeviceAppSettings } from "@/components/admin/NotificationSettings";
 import { supabase } from "@/lib/supabase";
+import { Button, Card, CardHeader, PageHeader, TextField, Toggle, Input, Badge, Spinner, useUI } from "@/components/admin/ui";
+import { useAdmin, DEFAULT_SHOP } from "@/components/admin/AdminContext";
+import BooksSettings from "@/components/admin/BooksSettings";
+import { FL_ESTIMATE_DISCLOSURE, FL_INVOICE_DISCLOSURE } from "@/components/admin/RepairOrderDocument";
 
-export default function AdminSettings() {
-  const [settings, setSettings] = useState({
-    businessInfo: {
-      name: "AUTO PRO REPAIRS SALES & SERVICES",
-      phone: "(352) 933-5181",
-      email: "service@autoprorepairs.com",
-      address: "806 Hood Ave",
-      city: "Leesburg",
-      state: "FL",
-      zipCode: "34748",
-      hours: {
-        monday: { open: "08:00", close: "18:00", closed: false },
-        tuesday: { open: "08:00", close: "18:00", closed: false },
-        wednesday: { open: "08:00", close: "18:00", closed: false },
-        thursday: { open: "08:00", close: "18:00", closed: false },
-        friday: { open: "08:00", close: "18:00", closed: false },
-        saturday: { open: "09:00", close: "15:00", closed: false },
-        sunday: { open: "09:00", close: "15:00", closed: true },
-      }
-    },
-    emailSettings: {
-      smtpHost: "",
-      smtpPort: "587",
-      smtpUser: "",
-      smtpPassword: "",
-      fromEmail: "service@autoprorepairs.com",
-      fromName: "AUTO PRO"
-    },
-    notificationSettings: {
-      newAppointmentNotifications: true,
-      newMessageNotifications: true,
-      reminderNotifications: true,
-      emailNotifications: true,
-      smsNotifications: false
-    },
-    systemSettings: {
-      maintenanceMode: false,
-      allowOnlineBooking: true,
-      requireApproval: true,
-      maxAppointmentsPerDay: 20,
-      appointmentDuration: 60,
-      advanceBookingDays: 30
-    }
-  });
+export default function SettingsPage() {
+  const { shop, refreshShop, user } = useAdmin();
+  const { toast } = useUI();
+  const [f, setF] = useState(shop);
+  const [saving, setSaving] = useState(false);
+  const [tech, setTech] = useState("");
+  const [pw, setPw] = useState({ a: "", b: "" });
+  const [pwSaving, setPwSaving] = useState(false);
+  const [admins, setAdmins] = useState([]);
+  const [health, setHealth] = useState(null);
+  const [nextInvoice, setNextInvoice] = useState("");
+  const [nextInvoiceSaved, setNextInvoiceSaved] = useState(null);
 
-  const [activeTab, setActiveTab] = useState("business");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
+  useEffect(() => setF(shop), [shop]);
   useEffect(() => {
-    loadSettings();
+    supabase.from("admin_users").select("*").order("created_at").then(({ data }) => setAdmins(data || []));
+    checkHealth();
+    supabase.rpc("get_next_invoice_number").then(({ data }) => {
+      if (data) {
+        setNextInvoice(String(data));
+        setNextInvoiceSaved(Number(data));
+      }
+    });
   }, []);
 
-  const loadSettings = async () => {
+  const saveNextInvoice = async () => {
+    const n = parseInt(nextInvoice, 10);
+    if (!n) return toast("Enter a number.", "bad");
+    const { error } = await supabase.rpc("set_next_invoice_number", { p_next: n });
+    if (error) return toast(error.message, "bad");
+    setNextInvoiceSaved(n);
+    toast(`Next invoice will be #${n}`);
+  };
+
+  const qb = { ...QB_DEFAULTS, ...(f.qb || {}) };
+  const setQb = (k) => (e) => setF((x) => ({ ...x, qb: { ...QB_DEFAULTS, ...(x.qb || {}), [k]: e.target.value } }));
+
+  const checkHealth = async () => {
+    setHealth(null);
     try {
-      // In a real app, you'd load these from the database
-      // For now, we'll use default values
-      console.log("Settings loaded");
-    } catch (error) {
-      console.error("Error loading settings:", error);
-      setError("Failed to load settings");
+      const res = await fetch("/api/health", { cache: "no-store" });
+      setHealth(await res.json());
+    } catch {
+      setHealth({ ok: false, checks: {} });
     }
   };
 
-  const saveSettings = async () => {
-    setLoading(true);
-    setError("");
-    setSuccess("");
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? e.target.value : e }));
 
-    try {
-      // In a real app, you'd save these to the database
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-      
-      setSuccess("Settings saved successfully!");
-      setTimeout(() => setSuccess(""), 3000);
-    } catch (error) {
-      console.error("Error saving settings:", error);
-      setError("Failed to save settings");
-    } finally {
-      setLoading(false);
-    }
+  const save = async () => {
+    const payload = {
+      ...DEFAULT_SHOP,
+      ...f,
+      labor_rate: Math.max(parseFloat(f.labor_rate) || 0, 0),
+      tax_rate: Math.min(Math.max((parseFloat(f.tax_rate_pct ?? f.tax_rate * 100) || 0) / 100, 0), 0.5),
+      payment_terms_days: Math.max(parseInt(f.payment_terms_days, 10) || 0, 0),
+    };
+    delete payload.tax_rate_pct;
+    setSaving(true);
+    const { error } = await supabase.from("settings").update({ value: payload, updated_at: new Date().toISOString() }).eq("key", "shop");
+    setSaving(false);
+    if (error) return toast(error.message, "bad");
+    toast("Settings saved");
+    refreshShop();
   };
 
-  const handleBusinessInfoChange = (field, value) => {
-    setSettings(prev => ({
-      ...prev,
-      businessInfo: {
-        ...prev.businessInfo,
-        [field]: value
-      }
-    }));
+  const changePassword = async () => {
+    if (pw.a.length < 10) return toast("Use at least 10 characters.", "bad");
+    if (pw.a !== pw.b) return toast("Passwords don't match.", "bad");
+    setPwSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: pw.a });
+    setPwSaving(false);
+    if (error) return toast(error.message, "bad");
+    setPw({ a: "", b: "" });
+    toast("Password updated — you can now sign in with it");
   };
 
-  const handleHoursChange = (day, field, value) => {
-    setSettings(prev => ({
-      ...prev,
-      businessInfo: {
-        ...prev.businessInfo,
-        hours: {
-          ...prev.businessInfo.hours,
-          [day]: {
-            ...prev.businessInfo.hours[day],
-            [field]: value
-          }
-        }
-      }
-    }));
-  };
-
-  const handleEmailSettingsChange = (field, value) => {
-    setSettings(prev => ({
-      ...prev,
-      emailSettings: {
-        ...prev.emailSettings,
-        [field]: value
-      }
-    }));
-  };
-
-  const handleNotificationChange = (field, value) => {
-    setSettings(prev => ({
-      ...prev,
-      notificationSettings: {
-        ...prev.notificationSettings,
-        [field]: value
-      }
-    }));
-  };
-
-  const handleSystemSettingsChange = (field, value) => {
-    setSettings(prev => ({
-      ...prev,
-      systemSettings: {
-        ...prev.systemSettings,
-        [field]: value
-      }
-    }));
-  };
-
-  const testEmailSettings = async () => {
-    setLoading(true);
-    try {
-      // In a real app, you'd test the email configuration
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setSuccess("Email test successful!");
-      setTimeout(() => setSuccess(""), 3000);
-    } catch (error) {
-      setError("Email test failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const tabs = [
-    { id: "business", label: "Business Info", icon: "🏢" },
-    { id: "email", label: "Email Settings", icon: "📧" },
-    { id: "notifications", label: "Notifications", icon: "🔔" },
-    { id: "system", label: "System", icon: "⚙️" },
-  ];
-
-  const dayNames = {
-    monday: "Monday",
-    tuesday: "Tuesday", 
-    wednesday: "Wednesday",
-    thursday: "Thursday",
-    friday: "Friday",
-    saturday: "Saturday",
-    sunday: "Sunday"
-  };
+  const techs = f.technicians || [];
+  const taxPct = f.tax_rate_pct ?? String(Math.round(Number(f.tax_rate || 0) * 10000) / 100);
 
   return (
-    <AdminLayout>
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <button
-          onClick={saveSettings}
-          disabled={loading}
-          className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
-            loading
-              ? 'bg-gray-400 cursor-not-allowed text-gray-200'
-              : 'bg-blue-600 hover:bg-blue-700 text-white'
-          }`}
-        >
-          {loading ? 'Saving...' : 'Save Settings'}
-        </button>
-      </div>
+    <>
+      <PageHeader
+        title="Settings"
+        description="Shop details and defaults used on estimates and invoices."
+        actions={<Button variant="primary" icon={Save} loading={saving} onClick={save}>Save settings</Button>}
+      />
 
-      {/* Success/Error Messages */}
-      {success && (
-        <div className="mb-6 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
-          {success}
-        </div>
-      )}
-      
-      {error && (
-        <div className="mb-6 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-          {error}
-        </div>
-      )}
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Card>
+          <CardHeader icon={Store} title="Shop profile" description="Printed at the top of every estimate and invoice." />
+          <div className="grid grid-cols-2 gap-3 px-5 pb-5">
+            <TextField className="col-span-2" label="Business name" value={f.name || ""} onChange={set("name")} />
+            <TextField label="Phone" value={f.phone || ""} onChange={set("phone")} />
+            <TextField label="Email" value={f.email || ""} onChange={set("email")} />
+            <TextField className="col-span-2" label="Address" value={f.address || ""} onChange={set("address")} />
+            <TextField className="col-span-2" label="Website" value={f.website || ""} onChange={set("website")} />
+          </div>
+        </Card>
 
-      {/* Tabs */}
-      <div className="bg-white rounded-lg shadow mb-6">
-        <div className="border-b border-gray-200">
-          <nav className="flex -mb-px">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-4 px-6 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <span>{tab.icon}</span>
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        <div className="p-6">
-          {/* Business Info Tab */}
-          {activeTab === "business" && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Business Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Business Name
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.businessInfo.name}
-                      onChange={(e) => handleBusinessInfoChange('name', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Phone Number
-                    </label>
-                    <input
-                      type="tel"
-                      value={settings.businessInfo.phone}
-                      onChange={(e) => handleBusinessInfoChange('phone', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={settings.businessInfo.email}
-                      onChange={(e) => handleBusinessInfoChange('email', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Street Address
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.businessInfo.address}
-                      onChange={(e) => handleBusinessInfoChange('address', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      City
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.businessInfo.city}
-                      onChange={(e) => handleBusinessInfoChange('city', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      State
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.businessInfo.state}
-                      onChange={(e) => handleBusinessInfoChange('state', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      ZIP Code
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.businessInfo.zipCode}
-                      onChange={(e) => handleBusinessInfoChange('zipCode', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Business Hours</h3>
-                <div className="space-y-3">
-                  {Object.entries(settings.businessInfo.hours).map(([day, hours]) => (
-                    <div key={day} className="flex items-center gap-4">
-                      <div className="w-24">
-                        <span className="text-sm font-medium text-gray-700">
-                          {dayNames[day]}
-                        </span>
-                      </div>
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={!hours.closed}
-                          onChange={(e) => handleHoursChange(day, 'closed', !e.target.checked)}
-                          className="mr-2"
-                        />
-                        Open
-                      </label>
-                      {!hours.closed && (
-                        <>
-                          <input
-                            type="time"
-                            value={hours.open}
-                            onChange={(e) => handleHoursChange(day, 'open', e.target.value)}
-                            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                          <span className="text-gray-500">to</span>
-                          <input
-                            type="time"
-                            value={hours.close}
-                            onChange={(e) => handleHoursChange(day, 'close', e.target.value)}
-                            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </>
-                      )}
-                      {hours.closed && (
-                        <span className="text-gray-500 italic">Closed</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+        <Card>
+          <CardHeader icon={Percent} title="Rates & tax" description="Defaults for new repair orders and line items." />
+          <div className="space-y-4 px-5 pb-5">
+            <div className="grid grid-cols-2 gap-3">
+              <TextField label="Labor rate ($/hr)" inputMode="decimal" value={f.labor_rate ?? ""} onChange={set("labor_rate")} />
+              <TextField label="Payment terms (days)" inputMode="numeric" value={f.payment_terms_days ?? 0} onChange={set("payment_terms_days")} hint="0 = due on pickup" />
             </div>
-          )}
+            <p className="rounded-lg border border-a-line p-4 text-[13px] text-a-muted">
+              Sales tax is figured automatically with Florida's rules (6% state + county surtax; when the shop supplies parts the whole job is taxable;
+              labor-only jobs with customer parts, towing and tire/battery fees aren't). Rates, fees and the county are under <strong className="text-a-text">Accounting & tax</strong> below.
+            </p>
+          </div>
+        </Card>
 
-          {/* Email Settings Tab */}
-          {activeTab === "email" && (
-            <div className="space-y-6">
+        <CustomerNotificationSettings value={f.notify} onChange={(notify) => setF((x) => ({ ...x, notify }))} />
+        <DeviceAppSettings />
+
+        <Card>
+          <CardHeader icon={Receipt} title="Invoicing" description="Numbering, terms and how customers pay." />
+          <div className="space-y-4 px-5 pb-5">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <h3 className="text-lg font-semibold mb-4">SMTP Configuration</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      SMTP Host
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.emailSettings.smtpHost}
-                      onChange={(e) => handleEmailSettingsChange('smtpHost', e.target.value)}
-                      placeholder="smtp.gmail.com"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      SMTP Port
-                    </label>
-                    <input
-                      type="number"
-                      value={settings.emailSettings.smtpPort}
-                      onChange={(e) => handleEmailSettingsChange('smtpPort', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      SMTP Username
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.emailSettings.smtpUser}
-                      onChange={(e) => handleEmailSettingsChange('smtpUser', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      SMTP Password
-                    </label>
-                    <input
-                      type="password"
-                      value={settings.emailSettings.smtpPassword}
-                      onChange={(e) => handleEmailSettingsChange('smtpPassword', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      From Email
-                    </label>
-                    <input
-                      type="email"
-                      value={settings.emailSettings.fromEmail}
-                      onChange={(e) => handleEmailSettingsChange('fromEmail', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      From Name
-                    </label>
-                    <input
-                      type="text"
-                      value={settings.emailSettings.fromName}
-                      onChange={(e) => handleEmailSettingsChange('fromName', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <button
-                    onClick={testEmailSettings}
-                    disabled={loading}
-                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors"
-                  >
-                    {loading ? 'Testing...' : 'Test Email Configuration'}
+                <TextField label="Next invoice number" inputMode="numeric" value={nextInvoice} onChange={(e) => setNextInvoice(e.target.value.replace(/\D/g, ""))} hint="Continues your QuickBooks numbering." />
+                {nextInvoiceSaved !== null && Number(nextInvoice) !== nextInvoiceSaved && (
+                  <Button size="sm" className="mt-2" onClick={saveNextInvoice}>Set to #{nextInvoice}</Button>
+                )}
+              </div>
+              <TextField as="select" label="Default terms" value={f.default_terms || "Due on receipt"} onChange={set("default_terms")}>
+                {TERMS.map((t) => <option key={t.value}>{t.value}</option>)}
+              </TextField>
+            </div>
+            <TextField label="Online payment link (Pay now button)" placeholder="https://… (Square, Stripe, PayPal or QuickBooks Payments link)" value={f.payment_link || ""} onChange={set("payment_link")} hint="Shown as a green “Pay now” button on unpaid invoices and statements." />
+            <TextField as="textarea" rows={3} label="Payment instructions" placeholder="e.g. Zelle: service@autoprorepairs.com · Checks payable to Auto Pro Repairs Sales & Services LLC" value={f.payment_instructions || ""} onChange={set("payment_instructions")} />
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader icon={BookOpen} title="QuickBooks mapping" description="Names must match your QuickBooks products/services and chart of accounts." />
+          <div className="grid grid-cols-2 gap-3 px-5 pb-5">
+            <div className="col-span-2 text-[12px] font-semibold uppercase tracking-wide text-a-faint">Products / services</div>
+            <TextField label="Labor item" value={qb.item_labor} onChange={setQb("item_labor")} />
+            <TextField label="Parts item" value={qb.item_part} onChange={setQb("item_part")} />
+            <TextField label="Fees item" value={qb.item_fee} onChange={setQb("item_fee")} />
+            <TextField label="Sublet item" value={qb.item_sublet} onChange={setQb("item_sublet")} />
+            <TextField label="Discount item" value={qb.item_discount} onChange={setQb("item_discount")} />
+            <TextField label="Sales tax item (Desktop)" value={qb.item_tax} onChange={setQb("item_tax")} />
+            <div className="col-span-2 mt-2 text-[12px] font-semibold uppercase tracking-wide text-a-faint">Accounts (QuickBooks Desktop IIF)</div>
+            <TextField label="Labor income" value={qb.acct_labor} onChange={setQb("acct_labor")} />
+            <TextField label="Parts income" value={qb.acct_part} onChange={setQb("acct_part")} />
+            <TextField label="Fees income" value={qb.acct_fee} onChange={setQb("acct_fee")} />
+            <TextField label="Sublet income" value={qb.acct_sublet} onChange={setQb("acct_sublet")} />
+            <TextField label="Discounts" value={qb.acct_discount} onChange={setQb("acct_discount")} />
+            <TextField label="Accounts receivable" value={qb.acct_ar} onChange={setQb("acct_ar")} />
+            <TextField label="Sales tax payable" value={qb.acct_tax} onChange={setQb("acct_tax")} />
+            <TextField label="Payments deposit to" value={qb.acct_deposit} onChange={setQb("acct_deposit")} />
+            <p className="col-span-2 text-xs text-a-faint">A line's own “Product/service” name (e.g. Transportation) overrides these defaults. Remember to save settings.</p>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader icon={FileText} title="Document terms" description="Fine print at the bottom of estimates and invoices." />
+          <div className="space-y-3 px-5 pb-5">
+            <TextField as="textarea" rows={3} label="Estimate terms" value={f.estimate_terms || ""} onChange={set("estimate_terms")} />
+            <TextField as="textarea" rows={3} label="Invoice terms & warranty" value={f.invoice_terms || ""} onChange={set("invoice_terms")} />
+            <TextField label="FL Motor Vehicle Repair Shop registration #" value={f.mv_repair_reg || ""} onChange={set("mv_repair_reg")} hint="Printed on every estimate and invoice (FDACS registration)." />
+            <TextField as="textarea" rows={3} label="Estimate disclosure (Florida Motor Vehicle Repair Act)" value={f.estimate_disclosure ?? FL_ESTIMATE_DISCLOSURE} onChange={set("estimate_disclosure")} />
+            <TextField as="textarea" rows={2} label="Invoice disclosure" value={f.invoice_disclosure ?? FL_INVOICE_DISCLOSURE} onChange={set("invoice_disclosure")} />
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader icon={Users} title="Technicians" description="Suggested when assigning a repair order." />
+          <div className="px-5 pb-5">
+            <div className="mb-3 flex flex-wrap gap-2">
+              {techs.map((t) => (
+                <span key={t} className="inline-flex items-center gap-1 rounded-lg border border-a-line bg-a-raised py-1 pl-3 pr-1 text-sm">
+                  {t}
+                  <button className="rounded p-0.5 text-a-faint hover:text-a-bad" aria-label={`Remove ${t}`} onClick={() => setF({ ...f, technicians: techs.filter((x) => x !== t) })}>
+                    <X className="h-3.5 w-3.5" />
                   </button>
-                </div>
-              </div>
+                </span>
+              ))}
+              {techs.length === 0 && <span className="text-sm text-a-faint">No technicians added.</span>}
             </div>
-          )}
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const t = tech.trim();
+                if (t && !techs.includes(t)) setF({ ...f, technicians: [...techs, t] });
+                setTech("");
+              }}
+            >
+              <Input value={tech} onChange={(e) => setTech(e.target.value)} placeholder="Name" />
+              <Button type="submit" icon={Plus}>Add</Button>
+            </form>
+            <p className="mt-2 text-xs text-a-faint">Remember to save settings.</p>
+          </div>
+        </Card>
 
-          {/* Notifications Tab */}
-          {activeTab === "notifications" && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Notification Preferences</h3>
-                <div className="space-y-4">
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={settings.notificationSettings.newAppointmentNotifications}
-                      onChange={(e) => handleNotificationChange('newAppointmentNotifications', e.target.checked)}
-                      className="mr-3"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-700">New Appointment Notifications</span>
-                      <p className="text-sm text-gray-500">Get notified when new appointments are booked</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={settings.notificationSettings.newMessageNotifications}
-                      onChange={(e) => handleNotificationChange('newMessageNotifications', e.target.checked)}
-                      className="mr-3"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-700">New Message Notifications</span>
-                      <p className="text-sm text-gray-500">Get notified when customers send messages</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={settings.notificationSettings.reminderNotifications}
-                      onChange={(e) => handleNotificationChange('reminderNotifications', e.target.checked)}
-                      className="mr-3"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-700">Appointment Reminders</span>
-                      <p className="text-sm text-gray-500">Send automatic reminders to customers</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={settings.notificationSettings.emailNotifications}
-                      onChange={(e) => handleNotificationChange('emailNotifications', e.target.checked)}
-                      className="mr-3"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-700">Email Notifications</span>
-                      <p className="text-sm text-gray-500">Receive notifications via email</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={settings.notificationSettings.smsNotifications}
-                      onChange={(e) => handleNotificationChange('smsNotifications', e.target.checked)}
-                      className="mr-3"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-700">SMS Notifications</span>
-                      <p className="text-sm text-gray-500">Receive notifications via text message</p>
-                    </div>
-                  </label>
-                </div>
-              </div>
+        <Card>
+          <CardHeader icon={KeyRound} title="Your password" description={`Signed in as ${user?.email}. Set a password to sign in without an email link.`} />
+          <div className="grid grid-cols-2 gap-3 px-5 pb-5">
+            <TextField label="New password" type="password" autoComplete="new-password" value={pw.a} onChange={(e) => setPw({ ...pw, a: e.target.value })} />
+            <TextField label="Confirm" type="password" autoComplete="new-password" value={pw.b} onChange={(e) => setPw({ ...pw, b: e.target.value })} />
+            <div className="col-span-2">
+              <Button loading={pwSaving} onClick={changePassword} disabled={!pw.a}>Update password</Button>
             </div>
-          )}
+          </div>
+        </Card>
 
-          {/* System Settings Tab */}
-          {activeTab === "system" && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold mb-4">System Configuration</h3>
-                <div className="space-y-4">
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={settings.systemSettings.maintenanceMode}
-                      onChange={(e) => handleSystemSettingsChange('maintenanceMode', e.target.checked)}
-                      className="mr-3"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-700">Maintenance Mode</span>
-                      <p className="text-sm text-gray-500">Temporarily disable public access to the website</p>
-                    </div>
-                  </label>
+        <Card>
+          <CardHeader icon={ShieldCheck} title="Admins" description="Only these emails can open the admin panel." />
+          <ul className="divide-y divide-a-line border-t border-a-line">
+            {admins.map((a) => (
+              <li key={a.email} className="flex items-center justify-between px-5 py-3 text-sm">
+                <span>
+                  <span className="block font-medium">{a.full_name || a.email}</span>
+                  <span className="block text-xs text-a-faint">{a.email}</span>
+                </span>
+                {a.active ? <Badge tone="good" dot>Active</Badge> : <Badge>Disabled</Badge>}
+              </li>
+            ))}
+          </ul>
+          <p className="px-5 py-3 text-xs text-a-faint">Owners add people and set roles (manager, bookkeeper/CPA, technician) under <a href="/admin/team?tab=access" className="text-a-accent">Team → App access</a>.</p>
+        </Card>
 
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={settings.systemSettings.allowOnlineBooking}
-                      onChange={(e) => handleSystemSettingsChange('allowOnlineBooking', e.target.checked)}
-                      className="mr-3"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-700">Allow Online Booking</span>
-                      <p className="text-sm text-gray-500">Allow customers to book appointments online</p>
-                    </div>
-                  </label>
+        <BooksSettings />
 
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={settings.systemSettings.requireApproval}
-                      onChange={(e) => handleSystemSettingsChange('requireApproval', e.target.checked)}
-                      className="mr-3"
-                    />
-                    <div>
-                      <span className="font-medium text-gray-700">Require Appointment Approval</span>
-                      <p className="text-sm text-gray-500">Manually approve all new appointments</p>
-                    </div>
-                  </label>
+        <Card className="xl:col-span-2">
+          <CardHeader icon={Activity} title="System health" actions={<Button size="sm" variant="ghost" icon={RefreshCw} onClick={checkHealth}>Recheck</Button>} />
+          <div className="grid gap-3 px-5 pb-5 sm:grid-cols-2 lg:grid-cols-4">
+            {!health ? (
+              <Spinner />
+            ) : (
+              [
+                ["Database connection", health.checks?.database, health.checks?.database_error || "Website can read/write Supabase"],
+                ["Email sending (Resend)", health.checks?.email_env, health.checks?.email_env ? "RESEND_API_KEY is set" : "RESEND_API_KEY missing — no emails will send"],
+                ["No exposed email key", !health.checks?.public_resend_key_present, health.checks?.public_resend_key_present ? "Delete NEXT_PUBLIC_RESEND_API_KEY in Vercel" : "Good"],
+                ["Service key removed", !health.checks?.service_role_key_present, health.checks?.service_role_key_present ? "SUPABASE_SERVICE_ROLE_KEY is no longer needed — delete it in Vercel" : "Good"],
+              ].map(([label, ok, detail]) => (
+                <div key={label} className="flex items-start gap-3 rounded-lg border border-a-line p-3">
+                  {ok ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-a-good" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-a-bad" />}
+                  <span>
+                    <span className="block text-sm font-medium">{label}</span>
+                    <span className="block text-xs text-a-faint">{detail}</span>
+                  </span>
                 </div>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Appointment Settings</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Max Appointments Per Day
-                    </label>
-                    <input
-                      type="number"
-                      value={settings.systemSettings.maxAppointmentsPerDay}
-                      onChange={(e) => handleSystemSettingsChange('maxAppointmentsPerDay', parseInt(e.target.value))}
-                      min="1"
-                      max="50"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Default Appointment Duration (minutes)
-                    </label>
-                    <input
-                      type="number"
-                      value={settings.systemSettings.appointmentDuration}
-                      onChange={(e) => handleSystemSettingsChange('appointmentDuration', parseInt(e.target.value))}
-                      min="15"
-                      max="480"
-                      step="15"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Advance Booking Days
-                    </label>
-                    <input
-                      type="number"
-                      value={settings.systemSettings.advanceBookingDays}
-                      onChange={(e) => handleSystemSettingsChange('advanceBookingDays', parseInt(e.target.value))}
-                      min="1"
-                      max="365"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-yellow-800">
-                      Important Notice
-                    </h3>
-                    <div className="mt-2 text-sm text-yellow-700">
-                      <p>Changes to system settings may affect website functionality. Test thoroughly after making changes.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+              ))
+            )}
+          </div>
+        </Card>
       </div>
-    </AdminLayout>
+    </>
   );
 }

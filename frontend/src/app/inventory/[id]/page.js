@@ -5,7 +5,9 @@ import Image from "next/image";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { supabase, PUBLIC_VEHICLE_COLUMNS } from "@/lib/supabase";
+import { displayImages } from "@/lib/vehicleImages";
+import { getLocalVehicle } from "@/data/localInventory";
 
 export default function VehicleDetail() {
   const params = useParams();
@@ -23,89 +25,6 @@ export default function VehicleDetail() {
     tradeIn: false,
   });
 
-  // HARDCODED IMAGE AND PRICE FIX - Same as inventory page
-  const getFixedVehicleData = (vehicle) => {
-    if (!vehicle) return vehicle;
-    
-    const vehicleKey = `${vehicle.year} ${vehicle.make} ${vehicle.model}`.toLowerCase();
-    const stockNumber = vehicle.stock_number || '';
-    
-    console.log(`🔍 Fixing vehicle detail: ${vehicleKey} (Stock: ${stockNumber})`);
-    
-    let fixedVehicle = { ...vehicle };
-    
-    // 2025 Toyota Camry (Stock: AP433889)
-    if (vehicleKey.includes('2025') && vehicleKey.includes('toyota') && vehicleKey.includes('camry')) {
-      console.log('✅ Fixed: 2025 Toyota Camry');
-      fixedVehicle.images = [
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/Toyotacam1.jpeg',
-          alt: '2025 Toyota Camry',
-          isPrimary: true
-        },
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052236947-fmqxec.jpg',
-          alt: '2025 Toyota Camry Interior',
-          isPrimary: false
-        },
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052202134-zbgall.jpg',
-          alt: '2025 Toyota Camry Side View',
-          isPrimary: false
-        }
-      ];
-      // Fix pricing: $39k regular (crossed out), $27.5k sale price (main)
-      fixedVehicle.price = 39000;  // This becomes the crossed-out price
-      fixedVehicle.sale_price = 27500;  // This becomes the main price
-    }
-    
-    // 2022 Toyota Tundra (Stock: AP677595)
-    else if (vehicleKey.includes('2022') && vehicleKey.includes('toyota') && vehicleKey.includes('tundra')) {
-      console.log('✅ Fixed: 2022 Toyota Tundra');
-      fixedVehicle.images = [
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052647603-vssyt7.jpg',
-          alt: '2022 Toyota Tundra',
-          isPrimary: true
-        },
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052659134-tkfil0.jpg',
-          alt: '2022 Toyota Tundra Interior',
-          isPrimary: false
-        }
-      ];
-    }
-    
-    // 2015 Kensworth T700 (Stock: AP824028)
-    else if (vehicleKey.includes('2015') && vehicleKey.includes('kensworth')) {
-      console.log('✅ Fixed: 2015 Kensworth T700');
-      fixedVehicle.images = [
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052819637-l1j3u0.jpg',
-          alt: '2015 Kensworth T700',
-          isPrimary: true
-        },
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052223641-w8ajg2.jpg',
-          alt: '2015 Kensworth T700 Detail',
-          isPrimary: false
-        }
-      ];
-    }
-    
-    // Ensure we have at least one image
-    if (!fixedVehicle.images || fixedVehicle.images.length === 0) {
-      fixedVehicle.images = [{
-        url: '/hero.jpg',
-        alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-        isPrimary: true,
-        isFallback: true
-      }];
-    }
-    
-    console.log('🔧 Fixed vehicle data:', fixedVehicle);
-    return fixedVehicle;
-  };
 
   useEffect(() => {
     fetchVehicleDetails();
@@ -115,12 +34,23 @@ export default function VehicleDetail() {
     try {
       setLoading(true);
       setError(null);
+
+      const localVehicle = getLocalVehicle(params.id);
+      if (localVehicle) {
+        setVehicle(localVehicle);
+        return;
+      }
       
+      if (!/^[0-9a-f-]{36}$/i.test(params.id)) {
+        setError('Vehicle not found');
+        return;
+      }
+
       const { data, error } = await supabase
         .from('vehicles')
-        .select('*')
+        .select(PUBLIC_VEHICLE_COLUMNS)
         .eq('id', params.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         throw error;
@@ -132,11 +62,10 @@ export default function VehicleDetail() {
       }
 
       // Apply fixes to the vehicle data
-      const fixedVehicle = getFixedVehicleData(data);
-      setVehicle(fixedVehicle);
-      
-      // Increment views
-      await supabase.rpc('increment_vehicle_views', { vehicle_id: params.id });
+      setVehicle({ ...data, price: data.price ?? data.list_price, images: displayImages(data) });
+
+      // Count the view (fire-and-forget)
+      supabase.rpc('increment_vehicle_views', { vehicle_id: params.id }).then(() => {});
     } catch (err) {
       console.error('Error fetching vehicle:', err);
       setError('Failed to load vehicle details');
@@ -158,29 +87,23 @@ export default function VehicleDetail() {
     setSubmitting(true);
 
     try {
-      // Create contact message
-      const { error } = await supabase
-        .from('contact_messages')
-        .insert([{
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone,
-          subject: `Inquiry about ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-          message: `${formData.message}\n\nVehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}\nStock #: ${vehicle.stock_number || 'N/A'}\nVIN: ${vehicle.vin || 'N/A'}\n\nTrade-in: ${formData.tradeIn ? 'Yes' : 'No'}`,
-        }]);
-
-      if (error) throw error;
-
-      // Send email notification
-      await fetch('/api/contact', {
+      const res = await fetch('/api/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...formData,
-          subject: `Vehicle Inquiry - ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-          vehicleInfo: vehicle,
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          message: formData.message,
+          tradeIn: formData.tradeIn,
+          subject: `Vehicle inquiry – ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+          vehicleInfo: {
+            year: vehicle.year, make: vehicle.make, model: vehicle.model, trim: vehicle.trim,
+            stock_number: vehicle.stock_number, vin: vehicle.vin,
+          },
         }),
       });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to send');
 
       alert('Thank you for your interest! We\'ll contact you shortly.');
       setShowContactForm(false);
@@ -258,12 +181,19 @@ export default function VehicleDetail() {
           <div className="grid lg:grid-cols-2 gap-8">
             {/* Image Gallery */}
             <div className="space-y-4">
-              <div className="relative h-96 overflow-hidden rounded-lg animate-fadeIn">
+              <div className="relative h-[26rem] md:h-[34rem] overflow-hidden rounded-lg animate-fadeIn bg-black">
+                <Image
+                  src={vehicle.images && vehicle.images[activeImage] ? vehicle.images[activeImage].url : defaultImage}
+                  alt=""
+                  aria-hidden="true"
+                  fill
+                  className="object-cover blur-2xl scale-110 opacity-50"
+                />
                 <Image
                   src={vehicle.images && vehicle.images[activeImage] ? vehicle.images[activeImage].url : defaultImage}
                   alt={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
                   fill
-                  className="object-cover"
+                  className="object-contain"
                   onError={(e) => {
                     console.error('Image load error:', e);
                     e.target.src = '/hero.jpg';
@@ -395,6 +325,13 @@ export default function VehicleDetail() {
                 </a>
               </div>
 
+              {vehicle.title_status && vehicle.title_status.toLowerCase() !== 'clean' && (
+                <div className="rounded-lg border border-amber-400/50 bg-amber-400/10 p-4 text-sm text-amber-100">
+                  <p className="font-semibold text-amber-300 mb-1">Title disclosure: {vehicle.title_status} title</p>
+                  <p>This vehicle has a Florida {vehicle.title_status.toLowerCase()} title. Ask us about its history before you buy.</p>
+                </div>
+              )}
+
               {/* Vehicle Details */}
               <div className="bg-gray-900 rounded-lg p-6">
                 <h2 className="text-xl font-bold mb-4">Vehicle Details</h2>
@@ -434,11 +371,18 @@ export default function VehicleDetail() {
                       <span className="text-gray-400">Condition:</span>
                       <span>{vehicle.condition || 'N/A'}</span>
                     </p>
+                    {vehicle.title_status && (
+                      <p className="flex justify-between">
+                        <span className="text-gray-400">Title:</span>
+                        <span className="text-amber-300">{vehicle.title_status}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
 
               {/* History */}
+              {(vehicle.accident_history !== undefined && vehicle.accident_history !== null) && vehicle.number_of_owners ? (
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gray-900 rounded-lg p-4 text-center">
                   <div className="text-2xl mb-2">{vehicle.accident_history ? '⚠️' : '✅'}</div>
@@ -449,6 +393,7 @@ export default function VehicleDetail() {
                   <p className="font-semibold">{vehicle.number_of_owners || 1} Owner{(vehicle.number_of_owners || 1) > 1 ? 's' : ''}</p>
                 </div>
               </div>
+              ) : null}
 
               {vehicle.service_records && (
                 <div className="bg-green-600/20 border border-green-600 rounded-lg p-4 text-center">

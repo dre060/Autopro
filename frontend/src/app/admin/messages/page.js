@@ -1,507 +1,189 @@
 // frontend/src/app/admin/messages/page.js
 "use client";
 
-import { useState, useEffect } from "react";
-import AdminLayout from "../AdminLayout";
-import { getContactMessages, supabase } from "@/lib/supabase";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { MessageSquare, Send, Phone, Mail, Trash2, CheckCheck, Search, ArrowLeft, UserPlus } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { relative, dateTime, phone as fmtPhone, telHref } from "@/lib/format";
+import { Button, Card, PageHeader, Segmented, Input, Textarea, EmptyState, SkeletonRows, ErrorBanner, Badge, cx, useUI } from "@/components/admin/ui";
+import { useAdmin, adminFetch } from "@/components/admin/AdminContext";
+import { cleanCustomer } from "@/components/admin/pickers";
+import { useRouter } from "next/navigation";
 
-export default function AdminMessages() {
-  const [messages, setMessages] = useState([]);
-  const [filteredMessages, setFilteredMessages] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
-  const [selectedMessage, setSelectedMessage] = useState(null);
-  const [showDetails, setShowDetails] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [replyText, setReplyText] = useState("");
-  const [showReply, setShowReply] = useState(false);
+function MessagesInner() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const { toast, confirm } = useUI();
+  const { refreshCounts } = useAdmin();
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  const [filter, setFilter] = useState("open");
+  const [q, setQ] = useState("");
+  const [activeId, setActiveId] = useState(params.get("id"));
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
 
+  const load = () =>
+    supabase.from("contact_messages").select("*").order("created_at", { ascending: false }).limit(500).then(({ data, error: err }) => {
+      if (err) setError(err);
+      setRows(data || []);
+    });
   useEffect(() => {
-    fetchMessages();
+    load();
   }, []);
 
-  useEffect(() => {
-    filterMessages();
-  }, [messages, filter]);
+  const shown = useMemo(() => {
+    let r = rows || [];
+    if (filter === "open") r = r.filter((m) => !m.responded);
+    if (filter === "done") r = r.filter((m) => m.responded);
+    const t = q.trim().toLowerCase();
+    if (t) r = r.filter((m) => `${m.name} ${m.email} ${m.subject} ${m.message}`.toLowerCase().includes(t));
+    return r;
+  }, [rows, filter, q]);
 
-  const fetchMessages = async () => {
-    setLoading(true);
+  const active = (rows || []).find((m) => m.id === activeId);
+  useEffect(() => setReply(""), [activeId]);
+
+  const markDone = async (m, responded = true) => {
+    const { error: err } = await supabase.from("contact_messages").update({ responded, updated_at: new Date().toISOString() }).eq("id", m.id);
+    if (err) return toast(err.message, "bad");
+    setRows((rs) => rs.map((x) => (x.id === m.id ? { ...x, responded } : x)));
+    refreshCounts();
+  };
+
+  const send = async () => {
+    setSending(true);
     try {
-      const { data, error } = await getContactMessages();
-      if (error) throw error;
-      setMessages(data || []);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      setError("Failed to load messages");
+      await adminFetch("/api/admin/email", { type: "message_reply", id: active.id, note: reply });
+      toast(`Reply sent to ${active.email}`);
+      setReply("");
+      await load();
+      refreshCounts();
+    } catch (e) {
+      toast(e.message, "bad");
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   };
 
-  const filterMessages = () => {
-    let filtered = [...messages];
-    
-    switch (filter) {
-      case "unread":
-        filtered = filtered.filter(msg => !msg.read);
-        break;
-      case "read":
-        filtered = filtered.filter(msg => msg.read);
-        break;
-      case "responded":
-        filtered = filtered.filter(msg => msg.responded);
-        break;
-      case "pending":
-        filtered = filtered.filter(msg => !msg.responded);
-        break;
-      default:
-        break;
-    }
-
-    setFilteredMessages(filtered);
+  const saveAsCustomer = async (m) => {
+    const { data: existing } = await supabase.from("customers").select("id").ilike("email", m.email).limit(1);
+    if (existing?.[0]) return router.push(`/admin/customers/${existing[0].id}`);
+    const [first, ...rest] = m.name.split(" ");
+    const { data, error: err } = await supabase.from("customers").insert(cleanCustomer({ first_name: first, last_name: rest.join(" "), email: m.email, phone: m.phone })).select("id").single();
+    if (err) return toast(err.message, "bad");
+    toast("Customer created");
+    router.push(`/admin/customers/${data.id}`);
   };
 
-  const markAsRead = async (id) => {
-    try {
-      const { error } = await supabase
-        .from('contact_messages')
-        .update({ read: true, read_at: new Date().toISOString() })
-        .eq('id', id);
-      
-      if (error) throw error;
-      
-      setMessages(messages.map(msg => 
-        msg.id === id ? { ...msg, read: true, read_at: new Date().toISOString() } : msg
-      ));
-    } catch (error) {
-      console.error('Error marking as read:', error);
-    }
-  };
-
-  const markAsResponded = async (id) => {
-    try {
-      const { error } = await supabase
-        .from('contact_messages')
-        .update({ 
-          responded: true, 
-          responded_at: new Date().toISOString(),
-          response_text: replyText 
-        })
-        .eq('id', id);
-      
-      if (error) throw error;
-      
-      setMessages(messages.map(msg => 
-        msg.id === id ? { 
-          ...msg, 
-          responded: true, 
-          responded_at: new Date().toISOString(),
-          response_text: replyText 
-        } : msg
-      ));
-      
-      setSuccess('Message marked as responded!');
-      setTimeout(() => setSuccess(""), 3000);
-    } catch (error) {
-      console.error('Error marking as responded:', error);
-      setError('Failed to mark as responded');
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this message?')) return;
-
-    try {
-      const { error } = await supabase
-        .from('contact_messages')
-        .delete()
-        .eq('id', id);
-      
-      if (error) throw error;
-      
-      setMessages(messages.filter(msg => msg.id !== id));
-      setSuccess('Message deleted successfully!');
-      setTimeout(() => setSuccess(""), 3000);
-    } catch (error) {
-      console.error('Error deleting message:', error);
-      setError('Failed to delete message');
-    }
-  };
-
-  const handleViewDetails = (message) => {
-    setSelectedMessage(message);
-    setShowDetails(true);
-    setReplyText(message.response_text || "");
-    
-    // Mark as read if not already read
-    if (!message.read) {
-      markAsRead(message.id);
-    }
-  };
-
-  const handleReply = () => {
-    if (!selectedMessage) return;
-    
-    const email = selectedMessage.email;
-    const subject = `Re: ${selectedMessage.subject}`;
-    const body = `Hi ${selectedMessage.name},\n\nThank you for contacting AUTO PRO REPAIRS SALES & SERVICES.\n\n${replyText}\n\nBest regards,\nAUTO PRO Team\n(352) 933-5181\n806 Hood Ave, Leesburg, FL 34748`;
-    
-    const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.open(mailtoLink);
-    
-    // Mark as responded
-    markAsResponded(selectedMessage.id);
-    setShowReply(false);
-  };
-
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case "high":
-        return "bg-red-100 text-red-800";
-      case "medium":
-        return "bg-yellow-100 text-yellow-800";
-      case "low":
-        return "bg-green-100 text-green-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  const getTimeSince = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
-    
-    if (diffInHours < 1) return "Just now";
-    if (diffInHours < 24) return `${diffInHours}h ago`;
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 7) return `${diffInDays}d ago`;
-    return date.toLocaleDateString();
-  };
+  const openCount = (rows || []).filter((m) => !m.responded).length;
 
   return (
-    <AdminLayout>
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Customer Messages</h1>
-        <button
-          onClick={fetchMessages}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          Refresh
-        </button>
-      </div>
-
-      {/* Success/Error Messages */}
-      {success && (
-        <div className="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
-          {success}
-        </div>
-      )}
-      
-      {error && (
-        <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-          {error}
-        </div>
-      )}
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600">Total Messages</p>
-          <p className="text-2xl font-bold">{messages.length}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600">Unread</p>
-          <p className="text-2xl font-bold text-red-600">
-            {messages.filter(m => !m.read).length}
-          </p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600">Pending Response</p>
-          <p className="text-2xl font-bold text-yellow-600">
-            {messages.filter(m => !m.responded).length}
-          </p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600">Responded</p>
-          <p className="text-2xl font-bold text-green-600">
-            {messages.filter(m => m.responded).length}
-          </p>
-        </div>
-      </div>
-
-      {/* Filter Tabs */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex flex-wrap gap-2">
-          {[
-            { key: "all", label: "All Messages" },
-            { key: "unread", label: "Unread" },
-            { key: "pending", label: "Pending Response" },
-            { key: "responded", label: "Responded" },
-          ].map((filterOption) => (
-            <button
-              key={filterOption.key}
-              onClick={() => setFilter(filterOption.key)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filter === filterOption.key
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              {filterOption.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Messages List */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
-            <p className="mt-4 text-gray-600">Loading messages...</p>
-          </div>
-        ) : filteredMessages.length === 0 ? (
-          <div className="text-center py-12">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2M4 13h2m13-8V4a1 1 0 00-1-1h-4" />
-            </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No messages found</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              {filter === "unread" 
-                ? "No unread messages."
-                : filter === "pending"
-                ? "No messages pending response."
-                : "No messages to display."
-              }
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-200">
-            {filteredMessages.map((message) => (
-              <div 
-                key={message.id} 
-                className={`p-6 hover:bg-gray-50 cursor-pointer transition-colors ${
-                  !message.read ? 'bg-blue-50 border-l-4 border-blue-500' : ''
-                }`}
-                onClick={() => handleViewDetails(message)}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className={`font-semibold ${!message.read ? 'text-blue-900' : 'text-gray-900'}`}>
-                        {message.name}
-                      </h3>
-                      <span className="text-sm text-gray-500">{message.email}</span>
-                      {!message.read && (
-                        <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-full">
-                          New
-                        </span>
-                      )}
-                      {message.responded && (
-                        <span className="bg-green-600 text-white text-xs px-2 py-1 rounded-full">
-                          Responded
-                        </span>
-                      )}
-                    </div>
-                    
-                    <h4 className="text-lg font-medium text-gray-800 mb-2">
-                      {message.subject}
-                    </h4>
-                    
-                    <p className="text-gray-600 text-sm line-clamp-2">
-                      {message.message.length > 150 
-                        ? `${message.message.substring(0, 150)}...`
-                        : message.message
-                      }
-                    </p>
-                    
-                    <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
-                      <span>📅 {getTimeSince(message.created_at)}</span>
-                      {message.phone && (
-                        <span>📞 {message.phone}</span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-col items-end gap-2">
-                    <div className="flex gap-2">
-                      <a
-                        href={`mailto:${message.email}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-blue-600 hover:text-blue-800 transition-colors"
-                        title="Reply via Email"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 7.89c.39.39 1.02.39 1.41 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                      </a>
-                      {message.phone && (
-                        <a
-                          href={`tel:${message.phone}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-green-600 hover:text-green-800 transition-colors"
-                          title="Call Customer"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.986.836l.74 4.435a1 1 0 01-.502 1.21l-2.257 1.13a11.037 11.037 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.435.74a1 1 0 01.836.986V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                          </svg>
-                        </a>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(message.id);
-                        }}
-                        className="text-red-600 hover:text-red-800 transition-colors"
-                        title="Delete Message"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Message Details Modal */}
-      {showDetails && selectedMessage && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start mb-6">
-              <h3 className="text-xl font-bold">Message Details</h3>
-              <button
-                onClick={() => setShowDetails(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+    <>
+      <PageHeader title="Messages" description="Contact form and vehicle inquiries from the website." />
+      <ErrorBanner error={error} />
+      <Card className="grid min-h-[70vh] overflow-hidden lg:grid-cols-[380px_1fr]">
+        <div className={cx("flex flex-col border-a-line lg:border-r", active && "hidden lg:flex")}>
+          <div className="space-y-3 border-b border-a-line p-3">
+            <Segmented
+              className="w-full [&>button]:flex-1 [&>button]:justify-center"
+              value={filter}
+              onChange={setFilter}
+              options={[{ value: "open", label: "Needs reply", count: openCount }, { value: "done", label: "Answered" }, { value: "all", label: "All" }]}
+            />
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-a-faint" />
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" className="pl-9" />
             </div>
-            
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-700">From:</label>
-                  <p className="text-gray-900">{selectedMessage.name}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Email:</label>
-                  <p className="text-gray-900">{selectedMessage.email}</p>
-                </div>
-                {selectedMessage.phone && (
-                  <div>
-                    <label className="text-sm font-medium text-gray-700">Phone:</label>
-                    <p className="text-gray-900">{selectedMessage.phone}</p>
-                  </div>
-                )}
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Received:</label>
-                  <p className="text-gray-900">{new Date(selectedMessage.created_at).toLocaleString()}</p>
-                </div>
-              </div>
-              
-              <div>
-                <label className="text-sm font-medium text-gray-700">Subject:</label>
-                <p className="text-gray-900 font-medium">{selectedMessage.subject}</p>
-              </div>
-              
-              <div>
-                <label className="text-sm font-medium text-gray-700">Message:</label>
-                <div className="bg-gray-50 rounded-lg p-4 mt-1">
-                  <p className="text-gray-900 whitespace-pre-wrap">{selectedMessage.message}</p>
-                </div>
-              </div>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {rows === null ? (
+              <SkeletonRows />
+            ) : shown.length === 0 ? (
+              <EmptyState icon={MessageSquare} title={filter === "open" ? "All caught up" : "No messages"} />
+            ) : (
+              <ul>
+                {shown.map((m) => (
+                  <li key={m.id}>
+                    <button
+                      onClick={() => setActiveId(m.id)}
+                      className={cx("block w-full border-b border-a-line/60 px-4 py-3 text-left transition-colors", m.id === activeId ? "bg-a-hover" : "hover:bg-a-hover/50")}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={cx("flex items-center gap-2 truncate text-sm", !m.responded && "font-semibold")}>
+                          {!m.responded && <span className="h-2 w-2 shrink-0 rounded-full bg-a-accent" />}
+                          {m.name}
+                        </span>
+                        <span className="shrink-0 text-[11px] text-a-faint">{relative(m.created_at)}</span>
+                      </div>
+                      <div className="mt-0.5 truncate text-[13px] text-a-text">{m.subject}</div>
+                      <div className="truncate text-xs text-a-faint">{m.message}</div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
 
-              {selectedMessage.responded && selectedMessage.response_text && (
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Previous Response:</label>
-                  <div className="bg-green-50 rounded-lg p-4 mt-1">
-                    <p className="text-gray-900 whitespace-pre-wrap">{selectedMessage.response_text}</p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Responded on: {new Date(selectedMessage.responded_at).toLocaleString()}
-                    </p>
+        <div className={cx("flex flex-col", !active && "hidden lg:flex")}>
+          {!active ? (
+            <EmptyState icon={MessageSquare} title="Select a message" className="m-auto" />
+          ) : (
+            <>
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-a-line px-5 py-4">
+                <div className="min-w-0">
+                  <button className="mb-2 flex items-center gap-1 text-[13px] text-a-muted lg:hidden" onClick={() => setActiveId(null)}><ArrowLeft className="h-4 w-4" /> Back</button>
+                  <h2 className="text-lg font-semibold">{active.subject}</h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-a-muted">
+                    <span className="font-medium text-a-text">{active.name}</span>
+                    <a href={`mailto:${active.email}`} className="flex items-center gap-1 hover:text-a-text"><Mail className="h-3.5 w-3.5" />{active.email}</a>
+                    {active.phone && <a href={telHref(active.phone)} className="flex items-center gap-1 hover:text-a-text"><Phone className="h-3.5 w-3.5" />{fmtPhone(active.phone)}</a>}
                   </div>
+                  <div className="mt-1 text-xs text-a-faint">{dateTime(active.created_at)}</div>
                 </div>
-              )}
-
-              {/* Reply Section */}
-              <div className="border-t pt-4">
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-medium text-gray-700">Quick Reply:</label>
-                  <button
-                    onClick={() => setShowReply(!showReply)}
-                    className="text-blue-600 hover:text-blue-700 text-sm"
-                  >
-                    {showReply ? 'Hide' : 'Show'} Reply Box
-                  </button>
+                <div className="flex gap-2">
+                  <Button size="sm" icon={UserPlus} onClick={() => saveAsCustomer(active)}>Customer</Button>
+                  <Button size="sm" icon={CheckCheck} onClick={() => markDone(active, !active.responded)}>{active.responded ? "Mark unanswered" : "Mark answered"}</Button>
+                  <Button size="sm" variant="danger" icon={Trash2} aria-label="Delete" onClick={async () => {
+                    if (!(await confirm({ title: "Delete this message?", danger: true, confirmLabel: "Delete" }))) return;
+                    const { error: err } = await supabase.from("contact_messages").delete().eq("id", active.id);
+                    if (err) return toast(err.message, "bad");
+                    setRows((rs) => rs.filter((x) => x.id !== active.id));
+                    setActiveId(null);
+                    refreshCounts();
+                  }} />
                 </div>
-                
-                {showReply && (
-                  <div className="space-y-3">
-                    <textarea
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      rows={4}
-                      placeholder="Type your response here..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleReply}
-                        disabled={!replyText.trim()}
-                        className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors"
-                      >
-                        Send Reply
-                      </button>
-                      <button
-                        onClick={() => markAsResponded(selectedMessage.id)}
-                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
-                      >
-                        Mark as Responded
-                      </button>
-                    </div>
+              </div>
+              <div className="flex-1 overflow-y-auto px-5 py-5">
+                <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{active.message}</p>
+                {active.response_notes && (
+                  <div className="mt-6 rounded-xl border border-a-line bg-a-raised p-4">
+                    <div className="mb-2 flex items-center gap-2"><Badge tone="good">Your replies</Badge></div>
+                    <p className="whitespace-pre-wrap text-sm text-a-muted">{active.response_notes}</p>
                   </div>
                 )}
               </div>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <a
-                href={`mailto:${selectedMessage.email}?subject=Re: ${selectedMessage.subject}`}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition-colors"
-              >
-                Reply via Email
-              </a>
-              {selectedMessage.phone && (
-                <a
-                  href={`tel:${selectedMessage.phone}`}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm transition-colors"
-                >
-                  Call Customer
-                </a>
-              )}
-              <button
-                onClick={() => setShowDetails(false)}
-                className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded text-sm transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
+              <div className="border-t border-a-line p-4">
+                <Textarea rows={4} value={reply} onChange={(e) => setReply(e.target.value)} placeholder={`Reply to ${active.name.split(" ")[0]}… (sent by email from the shop)`} />
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  {active.phone ? <Button size="sm" variant="ghost" icon={Phone} href={telHref(active.phone)}>Call instead</Button> : <span />}
+                  <Button variant="primary" icon={Send} loading={sending} disabled={!reply.trim()} onClick={send}>Send reply</Button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
-      )}
-    </AdminLayout>
+      </Card>
+    </>
+  );
+}
+
+export default function MessagesPage() {
+  return (
+    <Suspense fallback={null}>
+      <MessagesInner />
+    </Suspense>
   );
 }

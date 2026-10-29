@@ -1,0 +1,23 @@
+{
+  "id": "/admin",
+  "name": "Auto Pro Admin",
+  "short_name": "Auto Pro",
+  "description": "Run Auto Pro Repairs: jobs, schedule, invoices and customer updates.",
+  "start_url": "/admin?source=app",
+  "scope": "/admin",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#090b0f",
+  "theme_color": "#11141a",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/android-chrome-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Job board", "short_name": "Jobs", "url": "/admin/repair-orders", "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192" }] },
+    { "name": "Schedule", "url": "/admin/schedule", "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192" }] },
+    { "name": "New invoice", "url": "/admin/invoices?new=1", "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192" }] }
+  ]
+}

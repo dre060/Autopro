@@ -1,151 +1,145 @@
-/* frontend/src/app/admin/admin.css */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* frontend/src/app/admin/admin.css
+   Admin design tokens (RGB triplets so Tailwind opacity modifiers work).
+   Dark is the default; light is opt-in via data-theme="light". */
 
-/* Override Tailwind defaults to ensure text visibility */
-@layer base {
-  input,
-  textarea,
-  select {
-    @apply text-gray-900 !important;
-  }
+.admin-root {
+  --a-bg: 9 11 15;
+  --a-panel: 17 20 26;
+  --a-raised: 24 28 36;
+  --a-hover: 32 37 47;
+  --a-line: 38 44 56;
+  --a-text: 236 239 244;
+  --a-muted: 152 161 178;
+  --a-faint: 98 107 124;
+  --a-accent: 47 123 255;
+  --a-accent-fg: 255 255 255;
+  --a-good: 34 197 94;
+  --a-warn: 245 158 11;
+  --a-bad: 239 68 68;
+  --a-info: 56 189 248;
+  --a-violet: 167 139 250;
+  color-scheme: dark;
+
+  min-height: 100vh;
+  background: rgb(var(--a-bg));
+  color: rgb(var(--a-text));
+  font-family: 'Barlow', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Fix for input text visibility */
-input[type="text"],
-input[type="number"],
-input[type="email"],
-input[type="password"],
-input[type="tel"],
-input[type="date"],
-input[type="file"],
-textarea,
-select {
-  color: #111827 !important; /* gray-900 */
-  background-color: #ffffff !important;
+.admin-root[data-theme='light'] {
+  --a-bg: 244 245 248;
+  --a-panel: 255 255 255;
+  --a-raised: 248 249 251;
+  --a-hover: 238 240 244;
+  --a-line: 224 227 233;
+  --a-text: 17 20 26;
+  --a-muted: 92 101 117;
+  --a-faint: 140 148 162;
+  --a-accent: 37 99 235;
+  --a-good: 22 163 74;
+  --a-warn: 217 119 6;
+  --a-bad: 220 38 38;
+  --a-info: 2 132 199;
+  --a-violet: 124 58 237;
+  color-scheme: light;
 }
 
-input::placeholder,
-textarea::placeholder {
-  color: #9ca3af !important; /* gray-400 */
+.admin-root *,
+.admin-root *::before,
+.admin-root *::after {
+  border-color: rgb(var(--a-line));
 }
 
-/* Dark mode inputs for login page */
-.bg-gray-700 input,
-.bg-gray-700 textarea,
-.bg-gray-700 select {
-  color: #ffffff !important;
-  background-color: rgb(55 65 81) !important;
-}
-
-.bg-gray-700 input::placeholder,
-.bg-gray-700 textarea::placeholder {
-  color: #d1d5db !important; /* gray-300 */
-}
-
-/* Ensure form labels are visible */
-label {
-  color: #374151 !important; /* gray-700 */
-}
-
-/* Focus styles */
-input:focus,
-textarea:focus,
-select:focus {
-  outline: 2px solid #3b82f6 !important;
-  outline-offset: 2px !important;
-}
-
-/* Checkbox styling */
-input[type="checkbox"] {
-  color: #3b82f6 !important;
-  width: 1rem;
-  height: 1rem;
-  cursor: pointer;
-}
-
-/* File input styling */
-input[type="file"] {
-  color: #374151 !important;
-  cursor: pointer;
-}
-
-/* Select dropdown styling */
-select {
-  cursor: pointer;
-}
-
-select option {
-  color: #111827 !important;
-  background-color: #ffffff !important;
-}
-
-/* Table text */
-.text-gray-900 {
-  color: #111827 !important;
-}
-
-.text-gray-700 {
-  color: #374151 !important;
-}
-
-.text-gray-500 {
-  color: #6b7280 !important;
-}
-
-.text-gray-400 {
-  color: #9ca3af !important;
-}
-
-/* Headers */
-h1, h2, h3, h4, h5, h6 {
-  color: #111827 !important;
-}
-
-/* Ensure admin panel has proper background */
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background-color: #f3f4f6;
-  color: #111827;
-}
-
-/* Button hover states */
-button:not(:disabled):hover {
-  opacity: 0.9;
-}
-
-/* Disabled button states */
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-/* Form container backgrounds */
-.bg-white {
-  background-color: #ffffff !important;
-}
-
-.bg-gray-100 {
-  background-color: #f3f4f6 !important;
-}
-
-/* Border colors */
-.border-gray-300 {
-  border-color: #d1d5db !important;
-}
-
-/* Make sure all text is visible */
-* {
+.admin-root ::selection {
+  background: rgb(var(--a-accent) / 0.35);
   color: inherit;
 }
 
-/* Override any conflicting dark mode styles */
-@media (prefers-color-scheme: dark) {
-  input:not(.bg-gray-700 input),
-  textarea:not(.bg-gray-700 textarea),
-  select:not(.bg-gray-700 select) {
-    color: #111827 !important;
-    background-color: #ffffff !important;
+/* The public site's globals.css forces every nav/header to
+   `position: relative !important` on phones. Restore the admin app's
+   sticky top bar and fixed bottom tab bar. */
+.admin-root :is(nav, header).fixed { position: fixed !important; z-index: 30 !important; }
+.admin-root :is(nav, header).sticky { position: sticky !important; z-index: 30 !important; }
+
+/* Numbers line up in tables and totals */
+.admin-root .tnum { font-variant-numeric: tabular-nums; }
+
+/* ---------- form controls ---------- */
+:where(.a-input) {
+  width: 100%;
+  height: 36px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid rgb(var(--a-line));
+  background: rgb(var(--a-bg));
+  color: rgb(var(--a-text));
+  font-size: 14px;
+  transition: border-color .12s, box-shadow .12s;
+}
+:where(textarea.a-input) { height: auto; padding: 9px 11px; line-height: 1.5; resize: vertical; }
+:where(select.a-input) {
+  appearance: none;
+  padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23939aab' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+.a-input::placeholder { color: rgb(var(--a-faint)); }
+.a-input:hover { border-color: rgb(var(--a-faint) / 0.6); }
+.a-input:focus {
+  outline: none;
+  border-color: rgb(var(--a-accent));
+  box-shadow: 0 0 0 3px rgb(var(--a-accent) / 0.22);
+}
+.a-input:disabled { opacity: .6; cursor: not-allowed; }
+.a-input[aria-invalid='true'] { border-color: rgb(var(--a-bad)); }
+
+:where(.a-check) {
+  width: 16px; height: 16px; border-radius: 4px;
+  accent-color: rgb(var(--a-accent));
+  cursor: pointer;
+}
+
+/* ---------- focus ring for interactive elements ---------- */
+.admin-root :is(a, button, [role='button'], [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--a-accent));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---------- scrollbars ---------- */
+.admin-root ::-webkit-scrollbar { width: 10px; height: 10px; }
+.admin-root ::-webkit-scrollbar-thumb {
+  background: rgb(var(--a-line));
+  border-radius: 10px;
+  border: 2px solid rgb(var(--a-bg));
+}
+.admin-root ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- skeleton shimmer ---------- */
+.a-skeleton {
+  background: linear-gradient(90deg, rgb(var(--a-raised)) 0%, rgb(var(--a-hover)) 50%, rgb(var(--a-raised)) 100%);
+  background-size: 200% 100%;
+  animation: a-shimmer 1.2s ease-in-out infinite;
+  border-radius: 6px;
+}
+@keyframes a-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-root *, .admin-root *::before, .admin-root *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
+}
+
+/* ---------- printing (estimates / invoices) ---------- */
+@media print {
+  @page { margin: 12mm; }
+  body { background: #fff !important; }
+  .no-print { display: none !important; }
+  .admin-root { background: #fff !important; min-height: 0; }
+  .print-sheet { box-shadow: none !important; border: 0 !important; margin: 0 !important; max-width: none !important; }
 }

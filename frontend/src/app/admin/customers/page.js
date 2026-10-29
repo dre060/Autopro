@@ -1,431 +1,171 @@
 // frontend/src/app/admin/customers/page.js
 "use client";
 
-import { useState, useEffect } from "react";
-import AdminLayout from "../AdminLayout";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Plus, Search, Users, Download } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { money, customerName, phone as fmtPhone, date, isoDay } from "@/lib/format";
+import { Button, Card, PageHeader, Input, Table, Th, Td, EmptyState, SkeletonRows, Modal, ErrorBanner, Select, useUI, useDebounced } from "@/components/admin/ui";
+import { CustomerForm, cleanCustomer } from "@/components/admin/pickers";
 
-export default function AdminCustomers() {
-  const [customers, setCustomers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [showDetails, setShowDetails] = useState(false);
-  const [customerAppointments, setCustomerAppointments] = useState([]);
-  const [error, setError] = useState("");
+function CustomersInner() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const { toast } = useUI();
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState("recent");
+  const [newOpen, setNewOpen] = useState(params.get("new") === "1");
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
+  const dq = useDebounced(q);
 
   useEffect(() => {
-    fetchCustomers();
+    supabase
+      .from("customers")
+      .select("id, first_name, last_name, company, phone, email, created_at, updated_at, tags, customer_vehicles(id), repair_orders(total, balance_due, invoiced_at, created_at, status)")
+      .order("updated_at", { ascending: false })
+      .limit(2000)
+      .then(({ data, error: err }) => {
+        if (err) setError(err);
+        setRows(
+          (data || []).map((c) => {
+            const ros = (c.repair_orders || []).filter((r) => r.status !== "cancelled");
+            const invoiced = ros.filter((r) => r.invoiced_at);
+            const last = ros.map((r) => r.created_at).sort().pop();
+            return {
+              ...c,
+              vehicles: c.customer_vehicles?.length || 0,
+              visits: ros.length,
+              spend: invoiced.reduce((s, r) => s + Number(r.total), 0),
+              owed: invoiced.reduce((s, r) => s + Math.max(Number(r.balance_due), 0), 0),
+              lastVisit: last || null,
+            };
+          })
+        );
+      });
   }, []);
 
-  const fetchCustomers = async () => {
-    setLoading(true);
-    try {
-      // Get unique customers from appointments
-      const { data: appointmentsData, error: appointmentsError } = await supabase
-        .from('appointments')
-        .select('name, email, phone, created_at')
-        .order('created_at', { ascending: false });
-
-      if (appointmentsError) throw appointmentsError;
-
-      // Group appointments by email to get unique customers
-      const customerMap = new Map();
-      appointmentsData?.forEach(appointment => {
-        const key = appointment.email.toLowerCase();
-        if (!customerMap.has(key)) {
-          customerMap.set(key, {
-            name: appointment.name,
-            email: appointment.email,
-            phone: appointment.phone,
-            first_seen: appointment.created_at,
-            appointment_count: 1,
-          });
-        } else {
-          const customer = customerMap.get(key);
-          customer.appointment_count += 1;
-          // Keep the earliest date
-          if (appointment.created_at < customer.first_seen) {
-            customer.first_seen = appointment.created_at;
-          }
-        }
-      });
-
-      // Also get customers from contact messages
-      const { data: contactsData, error: contactsError } = await supabase
-        .from('contact_messages')
-        .select('name, email, phone, created_at')
-        .order('created_at', { ascending: false });
-
-      if (contactsError) throw contactsError;
-
-      contactsData?.forEach(contact => {
-        const key = contact.email.toLowerCase();
-        if (!customerMap.has(key)) {
-          customerMap.set(key, {
-            name: contact.name,
-            email: contact.email,
-            phone: contact.phone,
-            first_seen: contact.created_at,
-            appointment_count: 0,
-          });
-        }
-      });
-
-      const customersArray = Array.from(customerMap.values())
-        .sort((a, b) => new Date(b.first_seen) - new Date(a.first_seen));
-
-      setCustomers(customersArray);
-    } catch (error) {
-      console.error('Error fetching customers:', error);
-      setError("Failed to load customers");
-    } finally {
-      setLoading(false);
+  const shown = useMemo(() => {
+    let r = rows || [];
+    const t = dq.trim().toLowerCase();
+    const digits = t.replace(/\D/g, "");
+    if (t) {
+      r = r.filter(
+        (c) =>
+          customerName(c).toLowerCase().includes(t) ||
+          (c.email || "").toLowerCase().includes(t) ||
+          (c.company || "").toLowerCase().includes(t) ||
+          (digits.length >= 3 && (c.phone || "").replace(/\D/g, "").includes(digits))
+      );
     }
+    const by = {
+      recent: (a, b) => String(b.lastVisit || b.updated_at).localeCompare(String(a.lastVisit || a.updated_at)),
+      name: (a, b) => customerName(a).localeCompare(customerName(b)),
+      spend: (a, b) => b.spend - a.spend,
+      owed: (a, b) => b.owed - a.owed,
+    }[sort];
+    return [...r].sort(by);
+  }, [rows, dq, sort]);
+
+  const create = async () => {
+    if (!draft.first_name?.trim() && !draft.company?.trim()) return toast("Enter a first name or a company.", "bad");
+    setSaving(true);
+    const { data, error: err } = await supabase.from("customers").insert(cleanCustomer(draft)).select("id").single();
+    setSaving(false);
+    if (err) return toast(err.message, "bad");
+    router.push(`/admin/customers/${data.id}`);
   };
 
-  const fetchCustomerDetails = async (customer) => {
-    try {
-      setSelectedCustomer(customer);
-      
-      // Get all appointments for this customer
-      const { data: appointments, error } = await supabase
-        .from('appointments')
-        .select('*')
-        .ilike('email', customer.email)
-        .order('date', { ascending: false });
-
-      if (error) throw error;
-      
-      setCustomerAppointments(appointments || []);
-      setShowDetails(true);
-    } catch (error) {
-      console.error('Error fetching customer details:', error);
-      setError("Failed to load customer details");
-    }
-  };
-
-  const filteredCustomers = customers.filter(customer =>
-    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm)
-  );
-
-  const getStatusColor = (status) => {
-    const colors = {
-      pending: "bg-yellow-100 text-yellow-800",
-      confirmed: "bg-blue-100 text-blue-800",
-      "in-progress": "bg-purple-100 text-purple-800",
-      completed: "bg-green-100 text-green-800",
-      cancelled: "bg-red-100 text-red-800",
-      "no-show": "bg-gray-100 text-gray-800",
-    };
-    return colors[status] || "bg-gray-100 text-gray-800";
-  };
-
-  const exportCustomers = () => {
-    const headers = ["Name", "Email", "Phone", "First Seen", "Total Appointments"];
-    const rows = filteredCustomers.map(customer => [
-      customer.name,
-      customer.email,
-      customer.phone,
-      new Date(customer.first_seen).toLocaleDateString(),
-      customer.appointment_count,
-    ]);
-    
-    const csv = [headers, ...rows].map(row => row.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
+  const exportCsv = () => {
+    const header = ["First name", "Last name", "Company", "Phone", "Email", "Vehicles", "Visits", "Lifetime spend", "Balance owed", "Last visit"];
+    const lines = shown.map((c) => [c.first_name, c.last_name, c.company, c.phone, c.email, c.vehicles, c.visits, c.spend.toFixed(2), c.owed.toFixed(2), c.lastVisit ? isoDay(new Date(c.lastVisit)) : ""]);
+    const csv = [header, ...lines].map((l) => l.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `customers-${new Date().toISOString().split('T')[0]}.csv`;
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = `autopro-customers-${isoDay()}.csv`;
     a.click();
   };
 
   return (
-    <AdminLayout>
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Customer Management</h1>
-        <button
-          onClick={exportCustomers}
-          className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors flex items-center gap-2"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          Export CSV
-        </button>
-      </div>
-
-      {/* Error Message */}
-      {error && (
-        <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-          {error}
-        </div>
-      )}
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600">Total Customers</p>
-          <p className="text-2xl font-bold">{customers.length}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600">Repeat Customers</p>
-          <p className="text-2xl font-bold text-green-600">
-            {customers.filter(c => c.appointment_count > 1).length}
-          </p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600">New This Month</p>
-          <p className="text-2xl font-bold text-blue-600">
-            {customers.filter(c => 
-              new Date(c.first_seen) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-            ).length}
-          </p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-600">Avg Appointments</p>
-          <p className="text-2xl font-bold text-purple-600">
-            {customers.length > 0 
-              ? (customers.reduce((sum, c) => sum + c.appointment_count, 0) / customers.length).toFixed(1)
-              : 0
-            }
-          </p>
-        </div>
-      </div>
-
-      {/* Search */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex gap-4 items-center">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Search customers by name, email, or phone..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+    <>
+      <PageHeader
+        title="Customers"
+        description={rows ? `${rows.length} customer${rows.length === 1 ? "" : "s"}` : " "}
+        actions={
+          <>
+            <Button icon={Download} onClick={exportCsv} disabled={!rows?.length}>Export</Button>
+            <Button variant="primary" icon={Plus} onClick={() => { setDraft({}); setNewOpen(true); }}>New customer</Button>
+          </>
+        }
+      />
+      <ErrorBanner error={error} />
+      <Card>
+        <div className="flex flex-col gap-3 border-b border-a-line px-4 py-3 sm:flex-row sm:items-center">
+          <div className="relative flex-1 sm:max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-a-faint" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, phone, email…" className="pl-9" />
           </div>
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm("")}
-              className="text-blue-600 hover:text-blue-700"
-            >
-              Clear
-            </button>
-          )}
+          <Select value={sort} onChange={(e) => setSort(e.target.value)} className="sm:w-48">
+            <option value="recent">Most recent</option>
+            <option value="name">Name A–Z</option>
+            <option value="spend">Top spenders</option>
+            <option value="owed">Owes money</option>
+          </Select>
         </div>
-      </div>
-
-      {/* Customers Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
-            <p className="mt-4 text-gray-600">Loading customers...</p>
-          </div>
-        ) : filteredCustomers.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">
-              {searchTerm ? 'No customers found matching your search.' : 'No customers found.'}
-            </p>
-          </div>
+        {rows === null ? (
+          <SkeletonRows />
+        ) : shown.length === 0 ? (
+          <EmptyState icon={Users} title={q ? "No matches" : "No customers yet"} description="Customers are added when you create a repair order or appointment, or here." />
         ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Contact
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  First Seen
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Appointments
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
+          <Table>
+            <thead>
+              <tr><Th>Name</Th><Th>Phone</Th><Th>Email</Th><Th align="right">Vehicles</Th><Th align="right">Visits</Th><Th align="right">Lifetime</Th><Th align="right">Owes</Th><Th align="right">Last visit</Th></tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredCustomers.map((customer, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{customer.name}</div>
-                      {customer.appointment_count > 1 && (
-                        <div className="text-xs text-green-600 font-medium">Repeat Customer</div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900">{customer.email}</div>
-                    <div className="text-sm text-gray-500">{customer.phone}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(customer.first_seen).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      customer.appointment_count > 3 
-                        ? 'bg-green-100 text-green-800'
-                        : customer.appointment_count > 1
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {customer.appointment_count} appointment{customer.appointment_count !== 1 ? 's' : ''}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => fetchCustomerDetails(customer)}
-                      className="text-blue-600 hover:text-blue-900 mr-3"
-                    >
-                      View Details
-                    </button>
-                    <a
-                      href={`mailto:${customer.email}`}
-                      className="text-green-600 hover:text-green-900 mr-3"
-                    >
-                      Email
-                    </a>
-                    <a
-                      href={`tel:${customer.phone}`}
-                      className="text-purple-600 hover:text-purple-900"
-                    >
-                      Call
-                    </a>
-                  </td>
+            <tbody>
+              {shown.slice(0, 500).map((c) => (
+                <tr key={c.id} className="cursor-pointer hover:bg-a-hover/50" onClick={() => router.push(`/admin/customers/${c.id}`)}>
+                  <Td>
+                    <div className="font-medium">{customerName(c)}</div>
+                    {c.company && c.first_name && <div className="text-xs text-a-faint">{c.company}</div>}
+                  </Td>
+                  <Td className="whitespace-nowrap text-a-muted">{fmtPhone(c.phone) || "—"}</Td>
+                  <Td className="text-a-muted">{c.email || "—"}</Td>
+                  <Td align="right">{c.vehicles}</Td>
+                  <Td align="right">{c.visits}</Td>
+                  <Td align="right">{money(c.spend)}</Td>
+                  <Td align="right" className={c.owed > 0 ? "font-medium text-a-warn" : "text-a-faint"}>{c.owed > 0 ? money(c.owed) : "—"}</Td>
+                  <Td align="right" className="text-a-faint">{c.lastVisit ? date(c.lastVisit) : "—"}</Td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         )}
-      </div>
+      </Card>
 
-      {/* Customer Details Modal */}
-      {showDetails && selectedCustomer && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="text-lg font-bold">Customer Details: {selectedCustomer.name}</h3>
-              <button
-                onClick={() => setShowDetails(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-semibold text-gray-700 mb-2">Contact Information</h4>
-                <div className="space-y-2 text-sm">
-                  <p><span className="text-gray-500">Name:</span> {selectedCustomer.name}</p>
-                  <p><span className="text-gray-500">Email:</span> {selectedCustomer.email}</p>
-                  <p><span className="text-gray-500">Phone:</span> {selectedCustomer.phone}</p>
-                  <p><span className="text-gray-500">First Seen:</span> {new Date(selectedCustomer.first_seen).toLocaleDateString()}</p>
-                </div>
-              </div>
-              
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-semibold text-gray-700 mb-2">Statistics</h4>
-                <div className="space-y-2 text-sm">
-                  <p><span className="text-gray-500">Total Appointments:</span> {selectedCustomer.appointment_count}</p>
-                  <p><span className="text-gray-500">Customer Type:</span> 
-                    <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      selectedCustomer.appointment_count > 1 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {selectedCustomer.appointment_count > 1 ? 'Repeat Customer' : 'New Customer'}
-                    </span>
-                  </p>
-                </div>
-              </div>
-            </div>
+      <Modal
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        title="New customer"
+        footer={
+          <>
+            <Button onClick={() => setNewOpen(false)}>Cancel</Button>
+            <Button variant="primary" loading={saving} onClick={create}>Create customer</Button>
+          </>
+        }
+      >
+        <CustomerForm value={draft} onChange={setDraft} />
+      </Modal>
+    </>
+  );
+}
 
-            {/* Appointment History */}
-            <div>
-              <h4 className="font-semibold text-gray-700 mb-4">Appointment History ({customerAppointments.length})</h4>
-              {customerAppointments.length === 0 ? (
-                <p className="text-gray-500 text-sm">No appointments found for this customer.</p>
-              ) : (
-                <div className="space-y-3 max-h-60 overflow-y-auto">
-                  {customerAppointments.map((appointment) => (
-                    <div key={appointment.id} className="border border-gray-200 rounded-lg p-3">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-sm">{appointment.service}</span>
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
-                              {appointment.status}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600">
-                            {appointment.date} at {appointment.time}
-                          </p>
-                          {appointment.vehicle_info && (
-                            <p className="text-xs text-gray-500">
-                              Vehicle: {appointment.vehicle_info.year} {appointment.vehicle_info.make} {appointment.vehicle_info.model}
-                            </p>
-                          )}
-                          {appointment.message && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              Note: {appointment.message}
-                            </p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          {appointment.actual_cost?.total && (
-                            <p className="text-sm font-medium text-green-600">
-                              ${appointment.actual_cost.total}
-                            </p>
-                          )}
-                          {appointment.estimated_cost?.total && !appointment.actual_cost?.total && (
-                            <p className="text-sm text-gray-500">
-                              Est: ${appointment.estimated_cost.total}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <a
-                href={`mailto:${selectedCustomer.email}`}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm transition-colors"
-              >
-                Send Email
-              </a>
-              <a
-                href={`tel:${selectedCustomer.phone}`}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm transition-colors"
-              >
-                Call Customer
-              </a>
-              <button
-                onClick={() => setShowDetails(false)}
-                className="bg-gray-300 hover:bg-gray-400 text-gray-700 px-4 py-2 rounded text-sm transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </AdminLayout>
+export default function CustomersPage() {
+  return (
+    <Suspense fallback={null}>
+      <CustomersInner />
+    </Suspense>
   );
 }

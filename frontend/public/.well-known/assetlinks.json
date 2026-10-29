@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.autoprorepairs.admin",
+      "sha256_cert_fingerprints": ["F0:FE:A1:F5:DC:62:F1:D0:E4:4A:70:8F:6D:8F:07:E4:64:C3:0D:D4:1B:9E:3F:84:F1:DC:E3:A9:33:9D:4A:0F"]
+    }
+  }
+]

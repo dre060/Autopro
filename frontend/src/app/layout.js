@@ -1,13 +1,48 @@
 // frontend/src/app/layout.js - FIXED WITH FAVICONS
 "use client";
 
+import "@fontsource/barlow/400.css";
+import "@fontsource/barlow/500.css";
+import "@fontsource/barlow/600.css";
+import "@fontsource/barlow/700.css";
+import "@fontsource/chakra-petch/500.css";
+import "@fontsource/chakra-petch/600.css";
+import "@fontsource/chakra-petch/700.css";
 import "./globals.css";
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
+import IntroLoader from "@/components/IntroLoader";
 
 export default function RootLayout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const pathname = usePathname();
+  // Admin panel and customer estimate/invoice links (/i/...) have their own
+  // chrome; they skip the marketing header, footer and intro animation.
+  const isBare = pathname?.startsWith("/admin") || pathname?.startsWith("/i/");
+
+  // Solid header after scrolling + tach-style scroll progress bar
+  useEffect(() => {
+    const bar = document.getElementById("scroll-tach");
+    let ticking = false;
+    const update = () => {
+      const y = window.scrollY;
+      setScrolled(y > 40);
+      if (bar) {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        bar.style.transform = `scaleX(${max > 0 ? Math.min(y / max, 1) : 0})`;
+      }
+      ticking = false;
+    };
+    const onScroll = () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [pathname]);
+
+  const navCurrent = (href) => (pathname === href ? "page" : undefined);
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
@@ -40,8 +75,33 @@ export default function RootLayout({ children }) {
     };
   }, [mobileMenuOpen]);
 
+  if (isBare) {
+    return (
+      <html lang="en">
+        <head>
+          <title>Auto Pro</title>
+          <meta name="robots" content="noindex, nofollow" />
+          <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+          <link rel="icon" href="/favicon.ico" sizes="any" />
+          <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+          {pathname?.startsWith("/admin") && (
+            <>
+              <link rel="manifest" href="/admin-manifest.webmanifest" />
+              <meta name="theme-color" content="#11141a" />
+              <meta name="apple-mobile-web-app-capable" content="yes" />
+              <meta name="mobile-web-app-capable" content="yes" />
+              <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+              <meta name="apple-mobile-web-app-title" content="Auto Pro" />
+            </>
+          )}
+        </head>
+        <body className="antialiased">{children}</body>
+      </html>
+    );
+  }
+
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Primary Meta Tags */}
         <title>AUTO PRO Repairs & Sales | Leesburg, FL</title>
@@ -51,6 +111,16 @@ export default function RootLayout({ children }) {
         <meta name="robots" content="index, follow" />
         <meta name="language" content="English" />
         <meta name="author" content="AUTO PRO Repairs & Sales" />
+
+        {/* Intro plays once per browser session */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(sessionStorage.getItem('ap_intro_seen')){document.documentElement.dataset.intro='skip';document.documentElement.classList.add('intro-done')}}catch(e){}`,
+          }}
+        />
+        <noscript>
+          <style>{`.intro{display:none}.hero-line,.hero-rise,.reveal{opacity:1!important;transform:none!important;clip-path:none!important}`}</style>
+        </noscript>
 
         {/* Viewport */}
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -91,8 +161,10 @@ export default function RootLayout({ children }) {
         <meta name="ICBM" content="28.8108, -81.8773" />
 
         {/* Business Schema */}
-        <script type="application/ld+json">
-          {JSON.stringify({
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
             "@context": "https://schema.org",
             "@type": "AutoRepair",
             "name": "AUTO PRO Repairs & Sales",
@@ -115,49 +187,54 @@ export default function RootLayout({ children }) {
             "priceRange": "$",
             "paymentAccepted": "Cash, Credit Card, Financing",
             "currenciesAccepted": "USD"
-          })}
-        </script>
+            }),
+          }}
+        />
       </head>
       <body className="antialiased bg-black text-white">
-        {/* Navigation Header - FIXED Z-INDEX */}
-        <header className="absolute top-0 left-0 w-full z-[100] bg-black/90 backdrop-blur-sm">
+        <IntroLoader />
+        <div id="scroll-tach" className="scroll-tach" aria-hidden="true" />
+
+        {/* Navigation Header */}
+        <header className={`site-header ${scrolled || mobileMenuOpen ? "is-scrolled" : ""}`}>
           <div className="container mx-auto px-4 py-3 md:py-4">
             <nav className="flex items-center justify-between">
               {/* Logo */}
               <Link href="/" className="flex items-center" onClick={closeMobileMenu}>
                 <Image 
-                  src="/logo.jpg" 
-                  alt="AUTO PRO" 
-                  width={120} 
-                  height={60} 
-                  className="object-contain md:w-[150px] md:h-[80px]"
+                  src="/brand-emblem.png" 
+                  alt="" 
+                  width={78} 
+                  height={45} 
+                  className="object-contain w-[64px] md:w-[78px] h-auto"
+                  priority
                 />
-                <div className="ml-2 hidden sm:block">
-                  <h1 className="text-lg md:text-xl font-bold leading-none">AUTO PRO REPAIRS SALES & SERVICES</h1>
-                  <p className="text-xs text-gray-300">ASE CERTIFIED TECHNICIANS</p>
+                <div className="ml-3">
+                  <span className="block font-display text-base sm:text-lg md:text-xl font-bold leading-none tracking-tight">Auto Pro</span>
+                  <span className="block text-[11px] sm:text-xs text-gray-300 mt-1">Repairs, Sales &amp; Services</span>
                 </div>
               </Link>
 
               {/* Desktop Navigation Links */}
-              <div className="hidden md:flex items-center space-x-8">
-                <Link href="/" className="hover:text-blue-400 transition-colors">
+              <div className="hidden md:flex items-center space-x-7 lg:space-x-9">
+                <Link href="/" className="nav-link" aria-current={navCurrent("/")}>
                   Home
                 </Link>
-                <Link href="/about" className="hover:text-blue-400 transition-colors">
+                <Link href="/about" className="nav-link" aria-current={navCurrent("/about")}>
                   About
                 </Link>
-                <Link href="/services" className="hover:text-blue-400 transition-colors">
+                <Link href="/services" className="nav-link" aria-current={navCurrent("/services")}>
                   Services
                 </Link>
-                <Link href="/inventory" className="hover:text-blue-400 transition-colors">
+                <Link href="/inventory" className="nav-link" aria-current={navCurrent("/inventory")}>
                   Inventory
                 </Link>
-                <Link href="/specials" className="hover:text-blue-400 transition-colors text-yellow-400 font-semibold">
+                <Link href="/specials" className="nav-link !text-yellow-400 font-semibold" aria-current={navCurrent("/specials")}>
                   Specials
                 </Link>
                 <a 
                   href="tel:3529335181" 
-                  className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded font-semibold transition-all transform hover:scale-105"
+                  className="ap-btn ap-btn--primary !py-2 !px-4"
                 >
                   (352) 933-5181
                 </a>
@@ -408,7 +485,7 @@ export default function RootLayout({ children }) {
             
             <div className="container mx-auto mt-8 pt-8 border-t border-gray-800">
               <div className="flex flex-col md:flex-row justify-between items-center text-gray-400 text-xs md:text-sm">
-                <p>&copy; 2025 AUTO PRO REPAIRS SALES & SERVICES LLC. All rights reserved.</p>
+                <p>&copy; {new Date().getFullYear()} AUTO PRO REPAIRS SALES & SERVICES LLC. All rights reserved.</p>
                 <div className="flex space-x-4 mt-4 md:mt-0">
                   <Link href="/privacy" className="hover:text-white">Privacy Policy</Link>
                   <Link href="/terms" className="hover:text-white">Terms of Service</Link>

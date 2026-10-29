@@ -19,95 +19,15 @@ export default function Inventory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // HARDCODED IMAGE AND PRICE FIX - Replace fallback images with real Supabase URLs
-  const getFixedVehicleData = (vehicle) => {
-    const vehicleKey = `${vehicle.year} ${vehicle.make} ${vehicle.model}`.toLowerCase();
-    const stockNumber = vehicle.stock_number || '';
-    
-    console.log(`🔍 Checking vehicle: ${vehicleKey} (Stock: ${stockNumber})`);
-    
-    let fixedVehicle = { ...vehicle };
-    
-    // 2025 Toyota Camry (Stock: AP433889)  
-    if (vehicleKey.includes('2025') && vehicleKey.includes('toyota') && vehicleKey.includes('camry')) {
-      console.log('✅ Matched: 2025 Toyota Camry - fixing images and price');
-      
-      // Fix pricing: $39k regular (crossed out), $27.5k sale price (main)
-      fixedVehicle.price = 39000;  // This becomes the crossed-out price
-      fixedVehicle.sale_price = 27500;  // This becomes the main price
-      fixedVehicle.images = [
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/Toyotacam1.jpeg',
-          alt: '2025 Toyota Camry',
-          isPrimary: true
-        },
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052236947-fmqxec.jpg',
-          alt: '2025 Toyota Camry Interior',
-          isPrimary: false
-        },
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052202134-zbgall.jpg',
-          alt: '2025 Toyota Camry Side View',
-          isPrimary: false
-        }
-      ];
-    }
-    
-    // 2022 Toyota Tundra (Stock: AP677595)
-    else if (vehicleKey.includes('2022') && vehicleKey.includes('toyota') && vehicleKey.includes('tundra')) {
-      console.log('✅ Matched: 2022 Toyota Tundra');
-      fixedVehicle.images = [
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052647603-vssyt7.jpg',
-          alt: '2022 Toyota Tundra',
-          isPrimary: true
-        },
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052659134-tkfil0.jpg',
-          alt: '2022 Toyota Tundra Interior',
-          isPrimary: false
-        }
-      ];
-    }
-    
-    // 2015 Kensworth T700 (Stock: AP824028)
-    else if (vehicleKey.includes('2015') && vehicleKey.includes('kensworth')) {
-      console.log('✅ Matched: 2015 Kensworth T700');
-      fixedVehicle.images = [
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052819637-l1j3u0.jpg',
-          alt: '2015 Kensworth T700',
-          isPrimary: true
-        },
-        {
-          url: 'https://fgzfltveywwzvvhqfuse.supabase.co/storage/v1/object/public/vehicle-images/auto-1753052223641-w8ajg2.jpg',
-          alt: '2015 Kensworth T700 Detail',
-          isPrimary: false
-        }
-      ];
-    }
-    
-    else {
-      console.log('⚠️ No match found, using original images');
-      // Return original images if no match (with fallback)
-      if (vehicle.images && vehicle.images.length > 0) {
-        fixedVehicle.images = vehicle.images;
-      } else {
-        // Ultimate fallback
-        fixedVehicle.images = [{
-          url: '/hero.jpg',
-          alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-          isPrimary: true,
-          isFallback: true
-        }];
-      }
-    }
-    
-    return fixedVehicle;
-  };
 
   useEffect(() => {
+    // Apply filters passed from the homepage search (?year=&make=&model=)
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = {};
+    ["make", "model", "year", "minPrice", "maxPrice", "bodyType"].forEach((k) => {
+      if (params.get(k)) fromUrl[k] = params.get(k);
+    });
+    if (Object.keys(fromUrl).length) setFilters((f) => ({ ...f, ...fromUrl }));
     fetchVehicles();
   }, []);
 
@@ -125,21 +45,8 @@ export default function Inventory() {
       }
       
       const data = await response.json();
-      console.log('🚗 Fetched vehicles:', data);
       
-      // Apply fixes to each vehicle (images and prices)
-      const processedVehicles = (data.vehicles || []).map(vehicle => {
-        const fixedVehicle = getFixedVehicleData(vehicle);
-        console.log(`🔧 Fixed vehicle data for ${vehicle.year} ${vehicle.make} ${vehicle.model}:`, {
-          images: fixedVehicle.images.length,
-          salePrice: fixedVehicle.sale_price
-        });
-        
-        return fixedVehicle;
-      });
-      
-      setVehicles(processedVehicles);
-      console.log('✅ Processed vehicles with fixed images:', processedVehicles);
+      setVehicles(data.vehicles || []);
     } catch (err) {
       console.error('❌ Error fetching vehicles:', err);
       setError('Unable to load vehicles at this time. Please try again.');
@@ -181,6 +88,7 @@ export default function Inventory() {
   const filteredVehicles = vehicles.filter((vehicle) => {
     return (
       (!filters.make || vehicle.make === filters.make) &&
+      (!filters.model || vehicle.model === filters.model) &&
       (!filters.year || vehicle.year.toString() === filters.year) &&
       (!filters.bodyType || vehicle.body_type === filters.bodyType) &&
       (!filters.minPrice || vehicle.price >= parseInt(filters.minPrice)) &&
@@ -387,7 +295,7 @@ export default function Inventory() {
                   return (
                     <div
                       key={vehicle.id}
-                      className="bg-gray-900 rounded-lg overflow-hidden hover:shadow-2xl transition-all duration-300 hover:transform hover:scale-105 group animate-fadeInUp"
+                      className="vcard group animate-fadeInUp"
                       style={{ animationDelay: `${index * 100}ms` }}
                     >
                       <div className="relative h-56 overflow-hidden">
@@ -446,6 +354,11 @@ export default function Inventory() {
                         
                         {vehicle.trim && (
                           <p className="text-sm text-gray-400 mb-2">{vehicle.trim}</p>
+                        )}
+                        {vehicle.title_status && (
+                          <p className="inline-block mb-3 rounded-full border border-amber-400/60 bg-amber-400/10 px-3 py-0.5 text-xs text-amber-300">
+                            {vehicle.title_status} title
+                          </p>
                         )}
                         
                         <div className="grid grid-cols-2 gap-2 text-sm text-gray-400 mb-4">

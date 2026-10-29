@@ -1,346 +1,65 @@
-// frontend/src/app/api/vehicles/route.js - COMPLETE WITH ENHANCED DEBUGGING
-import { NextResponse } from 'next/server';
-import { supabase, createVehicle } from '@/lib/supabase';
+// frontend/src/app/api/vehicles/route.js
+// Public vehicle catalog. Database rows are merged with cars listed in code
+// (src/data/localInventory.js). Creating/editing vehicles happens in the
+// admin panel, directly against Supabase under the admin's session.
+import { NextResponse } from "next/server";
+import { supabaseServer, PUBLIC_VEHICLE_COLUMNS } from "@/lib/supabase";
+import { displayImages } from "@/lib/vehicleImages";
+import { filterLocalVehicles } from "@/data/localInventory";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(request) {
-  try {
-    console.log('🔍 API: Fetching vehicles...');
-    
-    const { searchParams } = new URL(request.url);
-    
-    let query = supabase
-      .from('vehicles')
-      .select('*')
-      .order('created_at', { ascending: false });
+  const { searchParams } = new URL(request.url);
+  const localMatches = filterLocalVehicles(searchParams);
 
-    // Apply filters
-    const status = searchParams.get('status');
-    if (status) {
-      query = query.eq('status', status);
+  let query = supabaseServer()
+    .from("vehicles")
+    .select(PUBLIC_VEHICLE_COLUMNS)
+    .or("is_active.is.null,is_active.eq.true")
+    .order("featured", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  const status = searchParams.get("status");
+  if (status) query = query.eq("status", status);
+  const featured = searchParams.get("featured");
+  if (featured) query = query.eq("featured", featured === "true");
+  const make = searchParams.get("make");
+  if (make && make !== "All Makes") query = query.eq("make", make);
+  const model = searchParams.get("model");
+  if (model && model !== "All Models") query = query.eq("model", model);
+  const year = parseInt(searchParams.get("year"), 10);
+  if (year) query = query.eq("year", year);
+  const minPrice = parseInt(searchParams.get("minPrice"), 10);
+  if (minPrice) query = query.gte("price", minPrice);
+  const maxPrice = parseInt(searchParams.get("maxPrice"), 10);
+  if (maxPrice) query = query.lte("price", maxPrice);
+  const bodyType = searchParams.get("bodyType");
+  if (bodyType) query = query.eq("body_type", bodyType);
+  const limit = Math.min(parseInt(searchParams.get("limit"), 10) || 0, 200);
+  if (limit) query = query.limit(limit);
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Vehicle query failed:", error.message);
+    if (localMatches.length) {
+      return NextResponse.json({ vehicles: localMatches, total: localMatches.length, degraded: true });
     }
-
-    const featured = searchParams.get('featured');
-    if (featured) {
-      query = query.eq('featured', featured === 'true');
-    }
-
-    const make = searchParams.get('make');
-    if (make && make !== 'All Makes') {
-      query = query.eq('make', make);
-    }
-
-    const model = searchParams.get('model');
-    if (model && model !== 'All Models') {
-      query = query.eq('model', model);
-    }
-
-    const year = searchParams.get('year');
-    if (year && year !== 'All Years') {
-      query = query.eq('year', parseInt(year));
-    }
-
-    const minPrice = searchParams.get('minPrice');
-    if (minPrice) {
-      query = query.gte('price', parseInt(minPrice));
-    }
-
-    const maxPrice = searchParams.get('maxPrice');
-    if (maxPrice) {
-      query = query.lte('price', parseInt(maxPrice));
-    }
-
-    const bodyType = searchParams.get('bodyType');
-    if (bodyType) {
-      query = query.eq('body_type', bodyType);
-    }
-
-    const limit = searchParams.get('limit');
-    if (limit) {
-      query = query.limit(parseInt(limit));
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('❌ Database error:', error);
-      return NextResponse.json(
-        { error: 'Failed to fetch vehicles', vehicles: [] },
-        { status: 500 }
-      );
-    }
-
-    // Process images with detailed debugging
-    const processedVehicles = (data || []).map((vehicle, vehicleIndex) => {
-      console.log(`\n🚗 API: Processing vehicle ${vehicleIndex + 1}: ${vehicle.year} ${vehicle.make} ${vehicle.model}`);
-      console.log('Raw images data:', vehicle.images);
-      console.log('Raw images type:', typeof vehicle.images);
-      
-      // Ensure images is always an array
-      let imageArray = [];
-      
-      if (Array.isArray(vehicle.images)) {
-        imageArray = vehicle.images;
-        console.log('✅ Images already an array:', imageArray.length, 'items');
-      } else if (typeof vehicle.images === 'string') {
-        try {
-          imageArray = JSON.parse(vehicle.images);
-          if (!Array.isArray(imageArray)) {
-            imageArray = [imageArray];
-          }
-          console.log('✅ Parsed string to array:', imageArray.length, 'items');
-        } catch (e) {
-          console.warn(`❌ Failed to parse images for vehicle ${vehicle.id}:`, e);
-          imageArray = [];
-        }
-      } else if (vehicle.images && typeof vehicle.images === 'object') {
-        imageArray = [vehicle.images];
-        console.log('✅ Converted object to array');
-      } else {
-        console.log('⚠️ No valid images found, will use fallback');
-      }
-      
-      // Process each image with enhanced debugging
-      const validImages = [];
-      
-      if (Array.isArray(imageArray) && imageArray.length > 0) {
-        console.log(`📷 Processing ${imageArray.length} images...`);
-        
-        imageArray.forEach((img, index) => {
-          console.log(`  Image ${index + 1}:`, img);
-          
-          let imageUrl = null;
-          let alt = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
-          let isPrimary = index === 0;
-          let fileName = null;
-          
-          if (typeof img === 'string') {
-            imageUrl = img;
-            console.log(`    String URL: ${imageUrl}`);
-          } else if (img && typeof img === 'object') {
-            imageUrl = img.url || img.publicUrl || img.src;
-            alt = img.alt || alt;
-            isPrimary = img.isPrimary !== undefined ? img.isPrimary : isPrimary;
-            fileName = img.fileName;
-            console.log(`    Object URL: ${imageUrl}`);
-            console.log(`    Alt: ${alt}`);
-            console.log(`    Primary: ${isPrimary}`);
-          }
-          
-          // URL validation with debugging
-          if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
-            const cleanedUrl = imageUrl.trim();
-            console.log(`    Cleaned URL: ${cleanedUrl}`);
-            
-            // More permissive validation - accept any HTTP/HTTPS URL
-            const isValidUrl = cleanedUrl.startsWith('http://') || 
-                             cleanedUrl.startsWith('https://') || 
-                             cleanedUrl.startsWith('/');
-            
-            console.log(`    Valid URL structure: ${isValidUrl}`);
-            
-            if (isValidUrl) {
-              const imageObj = {
-                url: cleanedUrl,
-                alt: alt || 'Vehicle Image',
-                isPrimary,
-                fileName
-              };
-              
-              validImages.push(imageObj);
-              console.log(`    ✅ Added image:`, imageObj);
-            } else {
-              console.warn(`    ❌ Invalid URL structure:`, cleanedUrl);
-            }
-          } else {
-            console.warn(`    ❌ No valid URL found for image ${index + 1}`);
-          }
-        });
-      } else {
-        console.log('⚠️ No images array to process');
-      }
-      
-      // Ensure at least one image (fallback)
-      if (validImages.length === 0) {
-        const fallbackImage = {
-          url: '/hero.jpg',
-          alt: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
-          isPrimary: true,
-          isFallback: true
-        };
-        validImages.push(fallbackImage);
-        console.log(`🔄 Using fallback image for vehicle ${vehicle.id}`);
-      }
-      
-      // Ensure at least one primary image
-      if (!validImages.some(img => img.isPrimary)) {
-        validImages[0].isPrimary = true;
-        console.log('🔧 Set first image as primary');
-      }
-      
-      vehicle.images = validImages;
-      console.log(`✅ Final images for vehicle ${vehicle.id}:`, validImages);
-      
-      return vehicle;
-    });
-
-    console.log(`✅ API: Returning ${processedVehicles.length} vehicles`);
-    
-    return NextResponse.json({ 
-      vehicles: processedVehicles,
-      total: processedVehicles.length 
-    });
-  } catch (error) {
-    console.error('❌ API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', vehicles: [] },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch vehicles", vehicles: [] }, { status: 500 });
   }
-}
 
-export async function POST(request) {
-  try {
-    console.log('🔨 API: Creating new vehicle...');
-    
-    const formData = await request.formData();
-    const vehicleData = {};
-    const images = [];
+  const dbVehicles = (data || []).map((v) => ({
+    ...v,
+    price: v.price ?? v.list_price,
+    images: displayImages(v),
+  }));
+  const dbStock = new Set(dbVehicles.map((v) => v.stock_number).filter(Boolean));
+  let vehicles = [...localMatches.filter((v) => !dbStock.has(v.stock_number)), ...dbVehicles];
+  if (limit) vehicles = vehicles.slice(0, limit);
 
-    // Extract form data with detailed logging
-    for (const [key, value] of formData.entries()) {
-      if (key.startsWith('image') && value instanceof File) {
-        images.push(value);
-        console.log(`📷 Found image: ${value.name} (${Math.round(value.size / 1024)}KB, ${value.type})`);
-      } else {
-        vehicleData[key] = value;
-      }
-    }
-
-    console.log('📝 Vehicle data summary:', {
-      year: vehicleData.year,
-      make: vehicleData.make,
-      model: vehicleData.model,
-      price: vehicleData.price,
-      imageCount: images.length
-    });
-
-    // Log all images for debugging
-    if (images.length > 0) {
-      console.log('📷 Image details:');
-      images.forEach((img, index) => {
-        console.log(`  ${index + 1}. ${img.name} - ${img.type} - ${Math.round(img.size / 1024)}KB`);
-      });
-    } else {
-      console.log('⚠️ No images provided');
-    }
-
-    // Process form data with better type conversion
-    const processedVehicleData = {
-      year: parseInt(vehicleData.year) || new Date().getFullYear(),
-      make: String(vehicleData.make || '').trim(),
-      model: String(vehicleData.model || '').trim(),
-      trim: vehicleData.trim ? String(vehicleData.trim).trim() : null,
-      vin: vehicleData.vin ? String(vehicleData.vin).trim() : null,
-      price: parseFloat(vehicleData.price) || 0,
-      sale_price: vehicleData.sale_price ? parseFloat(vehicleData.sale_price) : null,
-      mileage: parseInt(vehicleData.mileage) || 0,
-      body_type: String(vehicleData.body_type || '').trim(),
-      exterior_color: String(vehicleData.exterior_color || '').trim(),
-      interior_color: vehicleData.interior_color ? String(vehicleData.interior_color).trim() : null,
-      fuel_type: String(vehicleData.fuel_type || '').trim(),
-      transmission: String(vehicleData.transmission || '').trim(),
-      drivetrain: vehicleData.drivetrain ? String(vehicleData.drivetrain).trim() : null,
-      engine: vehicleData.engine ? String(vehicleData.engine).trim() : null,
-      features: parseArrayField(vehicleData.features),
-      key_features: parseArrayField(vehicleData.key_features),
-      financing_available: vehicleData.financing_available === 'true',
-      monthly_payment: vehicleData.monthly_payment ? parseFloat(vehicleData.monthly_payment) : null,
-      stock_number: vehicleData.stock_number ? String(vehicleData.stock_number).trim() : `AP${Date.now().toString().slice(-6)}`,
-      status: vehicleData.status || 'available',
-      condition: vehicleData.condition || 'Good',
-      description: vehicleData.description ? String(vehicleData.description).trim() : null,
-      carfax_available: vehicleData.carfax_available === 'true',
-      carfax_url: vehicleData.carfax_url ? String(vehicleData.carfax_url).trim() : null,
-      featured: vehicleData.featured === 'true',
-      accident_history: vehicleData.accident_history === 'true',
-      number_of_owners: parseInt(vehicleData.number_of_owners) || 1,
-      service_records: vehicleData.service_records === 'true'
-    };
-
-    // Validation
-    const requiredFields = ['make', 'model', 'price', 'body_type', 'exterior_color', 'fuel_type', 'transmission'];
-    for (const field of requiredFields) {
-      if (!processedVehicleData[field]) {
-        console.error(`❌ Missing required field: ${field}`);
-        return NextResponse.json(
-          { error: `Missing required field: ${field}` },
-          { status: 400 }
-        );
-      }
-    }
-
-    console.log('✅ Validation passed');
-    console.log('📊 Final vehicle data:', processedVehicleData);
-
-    // Use createVehicle from supabase.js with enhanced error handling
-    console.log('🚀 Calling createVehicle function...');
-    const result = await createVehicle(processedVehicleData, images);
-
-    if (result.error) {
-      console.error('❌ Vehicle creation failed:', result.error);
-      return NextResponse.json(
-        { 
-          error: 'Failed to create vehicle', 
-          details: result.error.message || 'Unknown error',
-          vehicleData: processedVehicleData,
-          imageCount: images.length
-        },
-        { status: 500 }
-      );
-    }
-
-    console.log('✅ Vehicle created successfully:', result.data.id);
-    console.log('📷 Final vehicle images:', result.data.images?.length || 0);
-    
-    if (result.data.images && result.data.images.length > 0) {
-      console.log('🔗 Image URLs:');
-      result.data.images.forEach((img, index) => {
-        console.log(`  ${index + 1}. ${img.url}`);
-      });
-    }
-    
-    return NextResponse.json(result.data);
-    
-  } catch (error) {
-    console.error('❌ POST error:', error);
-    return NextResponse.json(
-      { 
-        error: 'Internal server error', 
-        details: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-      },
-      { status: 500 }
-    );
-  }
-}
-
-// Helper function to parse array fields
-function parseArrayField(field) {
-  if (!field) return [];
-  
-  if (typeof field === 'string') {
-    try {
-      // Try parsing as JSON first
-      return JSON.parse(field);
-    } catch (e) {
-      // Fall back to comma-separated parsing
-      return field.split(',').map(item => item.trim()).filter(item => item);
-    }
-  }
-  
-  if (Array.isArray(field)) {
-    return field;
-  }
-  
-  return [];
+  return NextResponse.json(
+    { vehicles, total: vehicles.length },
+    { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+  );
 }
