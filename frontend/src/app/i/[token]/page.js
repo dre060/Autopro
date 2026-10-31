@@ -7,7 +7,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Printer, CheckCircle2, XCircle, Phone, Loader2, Check } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import RepairOrderDocument from "@/components/admin/RepairOrderDocument";
+import RepairOrderDocument, { AUTHORIZATION_TEXT, ACCEPTANCE_TEXT } from "@/components/admin/RepairOrderDocument";
+import SignaturePad from "@/components/SignaturePad";
 import "../../admin/admin.css";
 
 export default function CustomerDocumentPage({ params }) {
@@ -18,6 +19,7 @@ export default function CustomerDocumentPage({ params }) {
   const [error, setError] = useState("");
   const [done, setDone] = useState(null);
   const [picked, setPicked] = useState(null); // item ids the customer approves
+  const [sig, setSig] = useState(null); // drawn signature (PNG data URL)
 
   const load = useCallback(async () => {
     if (!/^[0-9a-f-]{36}$/i.test(params.token)) return setDoc(null);
@@ -43,13 +45,27 @@ export default function CustomerDocumentPage({ params }) {
     if (name.trim().length < 2) return setError("Type your full name to sign.");
     if (approve && !agree) return setError("Please check the box to authorize the work.");
     if (approve && !picked?.length) return setError("Select at least one item to approve, or decline the estimate.");
+    if (approve && !sig) return setError("Please sign in the box to approve.");
     setBusy(approve ? "approve" : "decline");
-    const { data, error: err } = await supabase.rpc("respond_to_estimate_lines", { p_token: params.token, p_name: name.trim(), p_item_ids: approve ? picked : [] });
+    const { data, error: err } = await supabase.rpc("respond_to_estimate_lines", { p_token: params.token, p_name: name.trim(), p_item_ids: approve ? picked : [], p_signature: approve ? sig : null });
     setBusy(null);
     if (err) return setError(err.message);
     setDone(data);
     // Alert the shop's devices (server verifies the response via the token).
     fetch("/api/push/estimate-response", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: params.token }) }).catch(() => {});
+    load();
+  };
+
+  const signInvoice = async () => {
+    setError("");
+    if (name.trim().length < 2) return setError("Type your full name.");
+    if (!sig) return setError("Please sign in the box.");
+    if (!agree) return setError("Please check the box to accept.");
+    setBusy("sign");
+    const { data, error: err } = await supabase.rpc("sign_invoice", { p_token: params.token, p_name: name.trim(), p_signature: sig });
+    setBusy(null);
+    if (err) return setError(err.message);
+    setDone(data === "already_signed" ? "already_signed" : "signed");
     load();
   };
 
@@ -75,6 +91,7 @@ export default function CustomerDocumentPage({ params }) {
   const order = doc.order;
   const shop = doc.shop || {};
   const canRespond = order.status === "estimate" && !order.invoiced_at && !order.declined_at;
+  const canSignInvoice = order.invoiced_at && !order.voided_at && order.doc_type !== "credit_memo" && !(doc.signatures || []).some((x) => x.kind === "invoice");
 
   return (
     <div className="min-h-screen bg-slate-100 px-3 py-6 sm:py-10" style={{ colorScheme: "light" }}>
@@ -88,9 +105,11 @@ export default function CustomerDocumentPage({ params }) {
       </div>
 
       {done && (
-        <div className={`no-print mx-auto mb-4 flex max-w-[860px] items-center gap-3 rounded-xl px-5 py-4 text-sm font-medium ${done === "approved" ? "bg-emerald-50 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
-          {done === "approved" ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
-          {done === "approved" ? "Thank you! Your approval was sent to the shop and we'll get started." : "Got it — we've let the shop know. Call us if you have questions."}
+        <div className={`no-print mx-auto mb-4 flex max-w-[860px] items-center gap-3 rounded-xl px-5 py-4 text-sm font-medium ${done === "declined" ? "bg-slate-200 text-slate-700" : "bg-emerald-50 text-emerald-800"}`}>
+          {done === "approved" || done === "signed" || done === "already_signed" ? <CheckCircle2 className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+          {done === "approved" ? "Thank you! Your signed approval was sent to the shop and we'll get started."
+            : done === "signed" || done === "already_signed" ? "Thank you! Your signature is on the invoice."
+            : "Got it — we've let the shop know. Call us if you have questions."}
         </div>
       )}
 
@@ -98,7 +117,7 @@ export default function CustomerDocumentPage({ params }) {
         <JobTracker status={order.status} vehicle={doc.vehicle} shop={shop} />
       )}
 
-      <RepairOrderDocument shop={shop} order={order} customer={doc.customer} vehicle={doc.vehicle} items={doc.items} payments={doc.payments} />
+      <RepairOrderDocument shop={shop} order={order} customer={doc.customer} vehicle={doc.vehicle} items={doc.items} payments={doc.payments} signatures={doc.signatures || []} />
 
       {canRespond && (
         <div className="no-print mx-auto mt-5 max-w-[860px] rounded-xl bg-white p-6 shadow-xl sm:p-8">
@@ -129,9 +148,12 @@ export default function CustomerDocumentPage({ params }) {
               className="h-11 flex-1 rounded-lg border border-slate-300 px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
             />
           </div>
-          <label className="mt-3 flex items-start gap-2 text-sm text-slate-600">
+          <div className="mt-3">
+            <SignaturePad onChange={setSig} label="Sign here with your finger or mouse" />
+          </div>
+          <label className="mt-2 flex items-start gap-2 text-sm text-slate-600">
             <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 h-4 w-4" />
-            I authorize Auto Pro to perform the work I selected above, plus tax, and any additional work only with my further approval.
+            <span>{shop.authorization_text || AUTHORIZATION_TEXT} This covers the work I selected above, plus tax.</span>
           </label>
           {error && <p className="mt-3 text-sm font-medium text-rose-600">{error}</p>}
           <div className="mt-5 flex flex-wrap gap-3">
@@ -150,6 +172,34 @@ export default function CustomerDocumentPage({ params }) {
               {busy === "decline" ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />} Decline
             </button>
           </div>
+        </div>
+      )}
+
+      {canSignInvoice && (
+        <div className="no-print mx-auto mt-5 max-w-[860px] rounded-xl bg-white p-6 shadow-xl sm:p-8">
+          <h2 className="text-lg font-semibold text-slate-900">Sign this invoice</h2>
+          <p className="mt-1 text-sm text-slate-500">Confirm the work was completed. Your signature is added to the invoice.</p>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Your full name"
+            className="mt-4 h-11 w-full rounded-lg border border-slate-300 px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+          />
+          <div className="mt-3">
+            <SignaturePad onChange={setSig} label="Sign here with your finger or mouse" />
+          </div>
+          <label className="mt-2 flex items-start gap-2 text-sm text-slate-600">
+            <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 h-4 w-4" />
+            <span>{shop.acceptance_text || ACCEPTANCE_TEXT}</span>
+          </label>
+          {error && <p className="mt-3 text-sm font-medium text-rose-600">{error}</p>}
+          <button
+            onClick={signInvoice}
+            disabled={Boolean(busy)}
+            className="mt-5 inline-flex h-11 items-center gap-2 rounded-lg bg-blue-600 px-6 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            {busy === "sign" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Sign invoice
+          </button>
         </div>
       )}
     </div>

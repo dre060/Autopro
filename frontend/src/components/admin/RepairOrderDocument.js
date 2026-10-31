@@ -22,7 +22,7 @@ export const FL_INVOICE_DISCLOSURE =
 
 const Label = ({ children }) => <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{children}</div>;
 
-export default function RepairOrderDocument({ shop = {}, order, customer, vehicle, items = [], payments = [] }) {
+export default function RepairOrderDocument({ shop = {}, order, customer, vehicle, items = [], payments = [], signatures = [] }) {
   const invoice = Boolean(order.invoiced_at);
   const voided = Boolean(order.voided_at) || order.status === "cancelled";
   const lines = items.filter((i) => i.approved !== false);
@@ -276,20 +276,61 @@ export default function RepairOrderDocument({ shop = {}, order, customer, vehicl
         {/* Florida Motor Vehicle Repair Act disclosures (wording editable in Settings → Invoicing) */}
         <p className="mt-2 whitespace-pre-wrap">{invoice ? shop.invoice_disclosure ?? FL_INVOICE_DISCLOSURE : shop.estimate_disclosure ?? FL_ESTIMATE_DISCLOSURE}</p>
         {shop.mv_repair_reg && <p className="mt-1">FL Motor Vehicle Repair Shop Registration #{shop.mv_repair_reg}</p>}
-        {order.approved_by_name && order.approved_at && (
-          <p className="mt-3 text-slate-700">
-            Approved electronically by <strong>{order.approved_by_name}</strong> on {day(order.approved_at)}.
-          </p>
-        )}
-        {!invoice && !order.approved_at && (
-          <div className="mt-8 hidden grid-cols-2 gap-10 print:grid">
-            <div className="border-t border-slate-400 pt-1">Customer signature</div>
-            <div className="border-t border-slate-400 pt-1">Date</div>
+        {!credit && (
+          <div className={`mt-5 grid gap-6 ${invoice ? "sm:grid-cols-2 print:grid-cols-2" : ""}`}>
+            <SignatureBlock
+              title="Repair authorization"
+              text={shop.authorization_text || AUTHORIZATION_TEXT}
+              sig={signatures.find((x) => x.kind === "estimate")}
+              typedName={order.approved_by_name}
+              typedAt={order.approved_at}
+            />
+            {invoice && (
+              <SignatureBlock
+                title="Work completed & accepted"
+                text={shop.acceptance_text || ACCEPTANCE_TEXT}
+                sig={signatures.find((x) => x.kind === "invoice")}
+              />
+            )}
           </div>
         )}
         <p className="mt-4 text-center text-slate-400">Thank you for your business!</p>
       </footer>
     </article>
+  );
+}
+
+export const AUTHORIZATION_TEXT =
+  "I authorize Auto Pro to perform the repairs listed above and agree to pay for them. I understand the shop will contact me for approval before doing any additional work.";
+export const ACCEPTANCE_TEXT =
+  "I acknowledge the repairs listed were completed and I received my vehicle in satisfactory condition. I agree to pay the balance due.";
+
+// Signed: shows the drawn signature, name and time. Not signed: blank lines to sign on paper.
+function SignatureBlock({ title, text, sig, typedName, typedAt }) {
+  const name = sig?.signer_name || typedName;
+  const at = sig?.signed_at || typedAt;
+  return (
+    <div className="rounded-lg border border-slate-200 p-4 text-slate-600" style={{ breakInside: "avoid" }}>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{title}</div>
+      <p className="mt-1 text-[11.5px] leading-relaxed">{text}</p>
+      {sig ? (
+        <div className="mt-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={sig.signature} alt={`Signature of ${sig.signer_name}`} className="h-14 w-auto max-w-full object-contain" />
+          <div className="border-t border-slate-400 pt-1 text-[11.5px] text-slate-700">
+            <strong>{sig.signer_name}</strong> · signed {sig.source === "in_shop" ? "in the shop" : "electronically"} {new Date(sig.signed_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+          </div>
+        </div>
+      ) : name && at ? (
+        <p className="mt-3 border-t border-slate-400 pt-1 text-[11.5px] text-slate-700">Approved electronically by <strong>{name}</strong> on {new Date(at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+      ) : (
+        <div className="mt-10 grid grid-cols-[2fr_1fr] gap-6 text-[11px]">
+          <div className="border-t border-slate-400 pt-1">Customer signature</div>
+          <div className="border-t border-slate-400 pt-1">Date</div>
+          <div className="mt-6 border-t border-slate-400 pt-1">Printed name</div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -304,7 +345,7 @@ function Row({ label, value }) {
 
 // Map admin-side records into the shape the document expects (same shape the
 // get_public_repair_order() function returns for customer links).
-export function toDocumentProps({ shop, ro, items, payments }) {
+export function toDocumentProps({ shop, ro, items, payments, signatures = [] }) {
   const c = ro.customer;
   return {
     shop,
@@ -319,6 +360,7 @@ export function toDocumentProps({ shop, ro, items, payments }) {
     vehicle: ro.vehicle,
     items,
     payments,
+    signatures,
   };
 }
 

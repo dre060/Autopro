@@ -57,7 +57,7 @@ ${note ? `<div style="background:#f9fafb;border-left:3px solid #2f7bff;padding:1
           isInvoice && ro.due_date ? ["Due date", new Date(`${ro.due_date}T12:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })] : null,
           isInvoice && ro.terms ? ["Terms", ro.terms] : null,
         ].filter(Boolean))}</table>
-<p style="margin:24px 0 8px;text-align:center">${button(link, isInvoice ? "View invoice" : "Review & approve estimate")}</p>
+<p style="margin:24px 0 8px;text-align:center">${button(link, isInvoice ? "View & sign invoice" : "Review & sign estimate")}</p>
 ${payLink ? `<p style="margin:8px 0;text-align:center"><a href="${esc(payLink)}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 26px;border-radius:8px;font-size:15px">Pay ${esc(money(ro.balance_due))} online</a></p>` : ""}
 <p style="margin:0;text-align:center;color:#9ca3af;font-size:12px">Questions? Reply to this email or call ${esc(SHOP.phone)}.</p>`,
       }),

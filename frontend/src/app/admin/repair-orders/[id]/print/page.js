@@ -16,13 +16,14 @@ export default function PrintRepairOrder({ params }) {
 
   useEffect(() => {
     (async () => {
-      const [r, i, p] = await Promise.all([
+      const [r, i, p, sg] = await Promise.all([
         supabase.from("repair_orders").select("*, customer:customers(*), vehicle:customer_vehicles(*)").eq("id", params.id).single(),
         supabase.from("repair_order_items").select("*").eq("repair_order_id", params.id).order("position").order("created_at"),
-        supabase.from("payments").select("*").eq("repair_order_id", params.id).order("received_at"),
+        supabase.from("payments").select("*").eq("repair_order_id", params.id).is("voided_at", null).order("received_at"),
+        supabase.from("document_signatures").select("*").eq("repair_order_id", params.id).order("signed_at", { ascending: false }),
       ]);
       if (r.error) return setError(r.error);
-      setData({ ro: r.data, items: i.data || [], payments: p.data || [] });
+      setData({ ro: r.data, items: i.data || [], payments: p.data || [], signatures: sg.data || [] });
     })();
   }, [params.id]);
 

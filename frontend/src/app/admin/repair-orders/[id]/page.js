@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { priceFromMatrix, FEE_CODES, r2, rateOn } from "@/lib/books";
 import { useRates } from "@/components/admin/booksKit";
+import SignaturePad from "@/components/SignaturePad";
+import { AUTHORIZATION_TEXT, ACCEPTANCE_TEXT } from "@/components/admin/RepairOrderDocument";
 import NotifyCustomerModal, { autoNotify } from "@/components/admin/NotifyCustomer";
 import { supabase } from "@/lib/supabase";
 import { money, customerName, vehicleName, phone as fmtPhone, telHref, dateTime, date, isoDay } from "@/lib/format";
@@ -39,6 +41,8 @@ export default function RepairOrderPage({ params }) {
   const rates = useRates();
   const [feeMenu, setFeeMenu] = useState(false);
   const [creditFor, setCreditFor] = useState(null);
+  const [signatures, setSignatures] = useState([]);
+  const [signKind, setSignKind] = useState(null); // "estimate" | "invoice" while capturing in the shop
   const [ro, setRo] = useState(null);
   const [items, setItems] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -64,6 +68,7 @@ export default function RepairOrderPage({ params }) {
     setRo(r.data);
     setItems(i.data || []);
     setPayments(p.data || []);
+    supabase.from("document_signatures").select("*").eq("repair_order_id", params.id).order("signed_at", { ascending: false }).then(({ data }) => setSignatures(data || []));
   }, [params.id]);
 
   useEffect(() => {
@@ -168,9 +173,9 @@ export default function RepairOrderPage({ params }) {
   const createInvoice = async () => {
     const terms = ro.terms || ro.customer?.default_terms || shop.default_terms || "Due on receipt";
     const ok = await confirm({
-      title: `Create invoice from RO #${ro.number}?`,
+      title: `Convert ${ro.status === "estimate" ? "estimate" : "RO"} #${ro.number} to an invoice?`,
       message: `It gets the next invoice number, is dated today and is due ${terms === "Due on receipt" ? "on receipt" : `in ${terms.replace("Net ", "")} days (${terms})`}. Line items can still be edited afterwards.`,
-      confirmLabel: "Create invoice",
+      confirmLabel: "Convert to invoice",
     });
     if (!ok) return;
     const patch = { invoiced_at: new Date().toISOString(), terms, due_date: dueDateFor(terms) };
@@ -371,8 +376,8 @@ export default function RepairOrderPage({ params }) {
             {isInvoice ? "Send invoice" : "Send estimate"}
           </Button>
           {!isInvoice && !isInternal && (
-            <Button icon={Receipt} onClick={createInvoice}>
-              Create invoice
+            <Button icon={Receipt} variant={["ready", "completed"].includes(ro.status) ? "primary" : "secondary"} onClick={createInvoice}>
+              Convert to invoice
             </Button>
           )}
           {isInternal && !isInvoice && (
@@ -641,6 +646,38 @@ export default function RepairOrderPage({ params }) {
             </div>
           </Card>
 
+          {!isCredit && !isInternal && (
+            <Card className="space-y-3 p-5">
+              <h3 className="flex items-center gap-2 text-[13px] font-semibold text-a-muted"><FileSignature className="h-4 w-4" /> Customer signatures</h3>
+              {[
+                { kind: "estimate", label: "Repair authorization", show: true },
+                { kind: "invoice", label: "Work accepted (invoice)", show: isInvoice && !ro.voided_at },
+              ].filter((x) => x.show).map(({ kind, label }) => {
+                const sg = signatures.find((x) => x.kind === kind);
+                return (
+                  <div key={kind} className="rounded-lg border border-a-line p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{label}</span>
+                      {sg ? <Badge tone="good" dot>Signed</Badge> : kind === "estimate" && ro.approved_by_name ? <Badge tone="info">Approved online</Badge> : <Badge tone="warn">Not signed</Badge>}
+                    </div>
+                    {sg ? (
+                      <div className="mt-2 rounded-md bg-white p-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={sg.signature} alt={`Signature of ${sg.signer_name}`} className="h-12 w-auto max-w-full object-contain" />
+                        <div className="mt-1 text-[11.5px] text-slate-600">{sg.signer_name} · {sg.source === "in_shop" ? "in shop" : "online"} · {dateTime(sg.signed_at)}</div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Button size="xs" icon={FileSignature} onClick={() => setSignKind(kind)}>Get signature now</Button>
+                        <Button size="xs" variant="ghost" icon={Send} onClick={() => setSendOpen(true)}>Send link to sign</Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+
           <Card className="space-y-4 p-5">
             <h3 className="flex items-center gap-2 text-[13px] font-semibold text-a-muted"><FileSignature className="h-4 w-4" /> {isInvoice ? "Invoice details" : "Billing"}</h3>
             <div className="grid grid-cols-2 gap-3">
@@ -778,6 +815,21 @@ export default function RepairOrderPage({ params }) {
           refreshTotals();
         }}
         roId={ro.id}
+      />
+      <SignInShopModal
+        kind={signKind}
+        ro={ro}
+        shop={shop}
+        onClose={() => setSignKind(null)}
+        onSigned={async (kind, name) => {
+          setSignKind(null);
+          if (kind === "estimate" && ro.status === "estimate") {
+            await patchRo({ status: "approved", approved_by_name: name, approved_at: new Date().toISOString() }, "Estimate signed and approved");
+          } else {
+            toast("Signature saved");
+          }
+          load();
+        }}
       />
       <SendModal open={sendOpen} onClose={() => setSendOpen(false)} ro={ro} onSent={() => load()} />
       <NotifyCustomerModal open={Boolean(notifyEvent)} event={notifyEvent || "ready"} ro={ro} onClose={() => setNotifyEvent(null)} onSent={() => load()} />
@@ -1109,6 +1161,53 @@ function ItemRow({ item, showCost, onLocal, onSave, onRemove, markup, technician
         <IconButton size="sm" icon={X} label="Remove line" onClick={onRemove} />
       </td>
     </tr>
+  );
+}
+
+// Hand the phone or tablet to the customer to sign at the counter.
+function SignInShopModal({ kind, ro, shop, onClose, onSigned }) {
+  const { toast } = useUI();
+  const [name, setName] = useState("");
+  const [sig, setSig] = useState(null);
+  const [agree, setAgree] = useState(false);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (kind) {
+      setName(ro?.customer ? [ro.customer.first_name, ro.customer.last_name].filter(Boolean).join(" ") : "");
+      setSig(null);
+      setAgree(false);
+    }
+  }, [kind, ro]);
+  if (!kind) return null;
+  const estimate = kind === "estimate";
+  const save = async () => {
+    if (name.trim().length < 2) return toast("Enter the customer's name", "bad");
+    if (!sig) return toast("Have the customer sign in the box", "bad");
+    if (!agree) return toast("The customer needs to tick the box", "bad");
+    setSaving(true);
+    const { error } = await supabase.from("document_signatures").insert({
+      repair_order_id: ro.id, kind, signer_name: name.trim(), signature: sig, source: "in_shop", total_at_signing: ro.total,
+      user_agent: navigator.userAgent.slice(0, 300),
+    });
+    setSaving(false);
+    if (error) return toast(error.message, "bad");
+    onSigned(kind, name.trim());
+  };
+  return (
+    <Modal open onClose={onClose} size="lg" title={estimate ? "Customer signs to authorize repairs" : "Customer signs to accept the work"}
+      description={`${estimate ? "Estimate" : "Invoice"} #${estimate ? ro.number : ro.invoice_number} · total ${money(ro.total)}. Hand the device to the customer.`}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" icon={FileSignature} loading={saving} onClick={save}>Save signature</Button></>}>
+      <div className="space-y-3">
+        <TextField label="Customer name" value={name} onChange={(e) => setName(e.target.value)} />
+        <div className="rounded-xl bg-white p-3">
+          <SignaturePad onChange={setSig} label="Customer signs here" />
+        </div>
+        <label className="flex items-start gap-2 text-sm text-a-muted">
+          <input type="checkbox" className="a-check mt-0.5" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+          <span>{estimate ? shop.authorization_text || AUTHORIZATION_TEXT : shop.acceptance_text || ACCEPTANCE_TEXT}</span>
+        </label>
+      </div>
+    </Modal>
   );
 }
 
