@@ -133,9 +133,6 @@ export default function Services() {
             <a href="tel:3529335181" className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded transition-colors">
               📞 Call Now
             </a>
-            <a href="/warranty" className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded transition-colors">
-              🛡️ Warranty Info
-            </a>
           </div>
         </div>
       </section>
@@ -147,7 +144,7 @@ export default function Services() {
             <h2 className="text-3xl font-bold mb-4">Complete Auto Care Under One Roof</h2>
             <p className="text-gray-300 max-w-2xl mx-auto">
               From routine maintenance to major repairs, our ASE-certified technicians have the expertise 
-              to keep your vehicle running smoothly. All services backed by our 12-month/12,000-mile warranty.
+              to keep your vehicle running smoothly.
             </p>
           </div>
 
@@ -261,8 +258,8 @@ export default function Services() {
               <div className="bg-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold">
                 4
               </div>
-              <h3 className="font-semibold mb-2">Warranty</h3>
-              <p className="text-gray-400 text-sm">Drive away with confidence backed by our warranty</p>
+              <h3 className="font-semibold mb-2">Drive Away</h3>
+              <p className="text-gray-400 text-sm">We walk you through the work and get you back on the road</p>
             </div>
           </div>
         </div>
@@ -328,9 +325,9 @@ export default function Services() {
           <h2 className="text-3xl font-bold mb-8">Our Service Guarantee</h2>
           <div className="grid md:grid-cols-3 gap-6">
             <div>
-              <div className="text-5xl mb-4">🛡️</div>
-              <h3 className="text-xl font-bold mb-2">12/12 Warranty</h3>
-              <p>12 months or 12,000 miles on parts and labor</p>
+              <div className="text-5xl mb-4">📝</div>
+              <h3 className="text-xl font-bold mb-2">Written Estimates</h3>
+              <p>You approve every repair before we start</p>
             </div>
             <div>
               <div className="text-5xl mb-4">💯</div>
