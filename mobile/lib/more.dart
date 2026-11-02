@@ -42,6 +42,11 @@ class MoreTab extends StatelessWidget {
           tile(Icons.event_available_outlined, 'Year-end & 1099s', null, () => openWebAdmin('/admin/year-end'), web: true),
           tile(Icons.settings_outlined, 'Settings', null, () => openWebAdmin('/admin/settings'), web: true),
         ])),
+        const SectionHeader('Account'),
+        Card(child: Column(children: [
+          tile(Icons.privacy_tip_outlined, 'Privacy policy', null, () => openUrl('$siteUrl/privacy'), web: true),
+          tile(Icons.person_remove_outlined, 'Delete my account', 'Ask the shop to remove your login', () => emailTo('service@autoprorepairs.com'), web: true),
+        ])),
         const SizedBox(height: 8),
         Card(
           child: ListTile(

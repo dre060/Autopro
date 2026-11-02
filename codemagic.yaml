@@ -1,0 +1,43 @@
+# Codemagic (codemagic.io) builds the iPhone app on a cloud Mac and uploads it
+# to App Store Connect / TestFlight. Setup is in mobile/STORE-RELEASE.md.
+#   1. Codemagic → Teams → Integrations → App Store Connect: add an API key
+#      named "AutoPro ASC".
+#   2. Codemagic → app → Code signing identities: let Codemagic generate the
+#      iOS distribution certificate + App Store profile for com.autoprorepairs.admin.
+#   3. Start the "iOS → TestFlight" workflow.
+workflows:
+  ios-testflight:
+    name: iOS → TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    working_directory: mobile
+    integrations:
+      app_store_connect: AutoPro ASC
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.autoprorepairs.admin
+    triggering:
+      events: [tag]
+      tag_patterns:
+        - pattern: "app-v*"
+    scripts:
+      - name: Packages
+        script: flutter pub get
+      - name: CocoaPods
+        script: cd ios && pod install --repo-update
+      - name: Signing profiles
+        script: xcode-project use-profiles
+      - name: Build IPA
+        # Version name comes from pubspec.yaml; the build number must go up
+        # every upload, so use Codemagic's counter.
+        script: flutter build ipa --release --build-number=$((BUILD_NUMBER + 10)) --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

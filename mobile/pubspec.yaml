@@ -1,7 +1,7 @@
 name: autopro_admin
 description: "Auto Pro Repairs shop admin."
 publish_to: 'none'
-version: 2.0.0+2
+version: 2.0.1+3
 
 environment:
   sdk: ^3.13.5
@@ -28,8 +28,10 @@ flutter:
 
 flutter_launcher_icons:
   android: true
-  ios: false
+  ios: true
+  remove_alpha_ios: true
+  background_color_ios: "#000000"
   image_path: assets/icon.png
-  adaptive_icon_background: "#0E1A33"
+  adaptive_icon_background: "#000000"
   adaptive_icon_foreground: assets/icon.png
   adaptive_icon_foreground_inset: 18
