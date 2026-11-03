@@ -16,11 +16,12 @@ public listing, and it is much less paperwork than a public release:
 
 Everything below is ready for either choice.
 
-## Accounts you need (only you can create these)
+## Accounts
 
-1. **Google Play Console** — $25 one time. Sign up as an **Organization** (Auto Pro Repairs Sales & Services LLC);
-   that needs a free D-U-N-S number from dnb.com and skips the 12-tester rule.
-2. **Apple Developer Program** — $99/year, enroll as an organization (also uses the D-U-N-S number).
+The app is published under Andre's existing organization accounts (the privacy policy says so):
+
+1. **Google Play Console** — *Lennox Digital* (organization account, ID 6532326622935845830), so no 12-tester rule.
+2. **Apple Developer Program** — *Lennox Digital Labs LLC*, Team ID 8Y2GRSNQMG.
 3. **Codemagic** (free tier is enough) — builds the iPhone app on a Mac for you, since this PC can't.
 4. **A reviewer login** — Apple (and Google, for production) need a working sign-in to review a staff app.
    Create an employee login for review (role *technician* or *manager*) and put it in the review notes.

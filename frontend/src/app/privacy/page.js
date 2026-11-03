@@ -34,6 +34,11 @@ export default function PrivacyPolicy() {
             share it with, and the choices you have. We do not sell your personal information, and we do not use it for
             advertising.
           </p>
+          <p className="mt-3 text-gray-700 leading-relaxed">
+            The Auto Pro app is published on Google Play and the App Store by Lennox Digital Labs LLC on behalf of Auto Pro
+            Repairs Sales &amp; Services LLC. Lennox Digital Labs does not use the app&rsquo;s data for any other purpose;
+            Auto Pro Repairs is responsible for the information described here.
+          </p>
 
           <Section id="collect" title="Information we collect">
             <p><strong>Customers.</strong> When you request an appointment, send us a message, or have your vehicle serviced

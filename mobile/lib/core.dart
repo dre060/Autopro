@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'demo.dart';
+export 'demo.dart' show demoMode;
 import 'package:url_launcher/url_launcher.dart';
 
 export 'package:supabase_flutter/supabase_flutter.dart';
@@ -19,7 +22,7 @@ const siteUrl = 'https://www.autoprorepairs.com';
 const shopName = 'Auto Pro Repairs';
 const shopPhone = '3529335181';
 
-Future<void> initAutoPro() => Supabase.initialize(url: supabaseUrl, publishableKey: supabasePublishableKey);
+Future<void> initAutoPro() => Supabase.initialize(url: supabaseUrl, publishableKey: supabasePublishableKey, httpClient: demoMode ? DemoClient() : null);
 
 SupabaseClient get db => Supabase.instance.client;
 
