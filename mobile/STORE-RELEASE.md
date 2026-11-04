@@ -67,13 +67,11 @@ The app is published under Andre's existing organization accounts (the privacy p
 1. developer.apple.com → **Identifiers** → register App ID `com.autoprorepairs.admin`.
 2. App Store Connect → **My Apps → +** → New App: iOS, name *Auto Pro* (if taken, *Auto Pro Shop Manager*),
    bundle ID `com.autoprorepairs.admin`, SKU `autopro-admin`.
-3. App Store Connect → Users and Access → **Integrations → App Store Connect API** → generate a key (role
-   *App Manager*). Download the .p8 once.
-4. Codemagic → add the GitHub repo → Team integrations → **App Store Connect** → add that key, name it
-   **AutoPro ASC** → Code signing identities → generate an iOS distribution certificate + App Store profile.
-5. Run the **iOS → TestFlight** workflow from `codemagic.yaml` (or push a tag like `app-v2.0.1`). About 15 min later
+3. Codemagic → add the GitHub repo `dre060/Autopro`. It reuses the App Store Connect key already in Codemagic
+   (`ShadowVPN App Store Connect`) and needs the `ios_signing` variable group (`CERTIFICATE_PRIVATE_KEY`) on this app too.
+4. Run the **Auto Pro → TestFlight** workflow from `codemagic.yaml`. About 15 min later
    the build shows up in TestFlight.
-6. TestFlight → Internal testing → add yourself and Keith → install the **TestFlight** app on the iPhone.
+5. TestFlight → Internal testing → add yourself and Keith → install the **TestFlight** app on the iPhone.
 
 For a public/unlisted release later: fill in the listing below, App Privacy answers, screenshots, the reviewer login,
 then **Submit for Review**, and request **Unlisted app distribution** from Apple's form.
@@ -129,4 +127,4 @@ and Claude will capture the screens and frame them at both stores' sizes.
 
 1. Raise `version:` in `pubspec.yaml` (e.g. `2.0.2+4` — the number after `+` must always go up).
 2. Android: `flutter build appbundle --release` → upload the .aab to the same track.
-3. iPhone: push a tag `app-v2.0.2` (or press Start in Codemagic).
+3. iPhone: press Start on the Auto Pro workflow in Codemagic.
