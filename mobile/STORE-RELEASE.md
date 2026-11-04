@@ -68,7 +68,8 @@ The app is published under Andre's existing organization accounts (the privacy p
 2. App Store Connect → **My Apps → +** → New App: iOS, name *Auto Pro* (if taken, *Auto Pro Shop Manager*),
    bundle ID `com.autoprorepairs.admin`, SKU `autopro-admin`.
 3. Codemagic → add the GitHub repo `dre060/Autopro`. It reuses the App Store Connect key already in Codemagic
-   (`ShadowVPN App Store Connect`) and needs the `ios_signing` variable group (`CERTIFICATE_PRIVATE_KEY`) on this app too.
+   (`ShadowVPN App Store Connect`) and the `autopro_distribution` certificate and `Auto Pro App Store` profile stored under
+   the team's Code signing identities.
 4. Run the **Auto Pro → TestFlight** workflow from `codemagic.yaml`. About 15 min later
    the build shows up in TestFlight.
 5. TestFlight → Internal testing → add yourself and Keith → install the **TestFlight** app on the iPhone.
