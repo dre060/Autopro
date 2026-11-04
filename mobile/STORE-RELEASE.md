@@ -118,7 +118,9 @@ then **Submit for Review**, and request **Unlisted app distribution** from Apple
 ## Screenshots
 
 - **Play:** 2–8 phone screenshots, PNG/JPEG, sides 320–3840 px, long side no more than 2× the short side.
-- **Apple:** at least 3 for 6.9" iPhone (1320 × 2868) — iPad screenshots are needed only if iPad is supported.
+- **Apple:** App Previews and Screenshots → iPhone with Dynamic Island (medium display): `store/screenshots/appstore-6.3/` (1206 × 2622).
+  In a narrow browser window that section hides behind the "Header and Search Results" dropdown; the Header box rejects these files.
+  `store/screenshots/appstore/` (1320 × 2868) is for the larger iPhone size in Media Manager if Apple asks for it.
 
 Store screenshots are public, so they must not show real customers. Sign in with the reviewer login on the emulator
 and Claude will capture the screens and frame them at both stores' sizes.
