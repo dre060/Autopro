@@ -22,12 +22,16 @@ const siteUrl = 'https://www.autoprorepairs.com';
 const shopName = 'Auto Pro Repairs';
 const shopPhone = '3529335181';
 
-Future<void> initAutoPro() => Supabase.initialize(url: supabaseUrl, publishableKey: supabasePublishableKey, httpClient: demoMode ? DemoClient() : null);
+Future<void> initAutoPro() => Supabase.initialize(url: supabaseUrl, publishableKey: supabasePublishableKey, httpClient: demoMode ? DemoClient() : SampleRouter(() => sampleData));
 
 SupabaseClient get db => Supabase.instance.client;
 
+/// True in demo mode and for the App Review login: the app shows the made-up shop.
+bool get sampleData => demoMode || db.auth.currentUser?.email?.toLowerCase() == reviewEmail;
+
 /// Calls an /api/admin/* route on the website with the signed-in session.
 Future<Map<String, dynamic>> siteApi(String path, [Map<String, dynamic>? body]) async {
+  if (sampleData) return sampleSiteApi(path);
   final token = db.auth.currentSession?.accessToken;
   final uri = Uri.parse('$siteUrl$path');
   final headers = {'Content-Type': 'application/json', if (token != null) 'Authorization': 'Bearer $token'};

@@ -124,6 +124,12 @@ then **Submit for Review**, and request **Unlisted app distribution** from Apple
 Store screenshots are public, so they must not show real customers. Sign in with the reviewer login on the emulator
 and Claude will capture the screens and frame them at both stores' sizes.
 
+## Review login
+
+Signing in as `appreview@autoprorepairs.com` opens the owner screens on the made-up shop in `lib/demo.dart`, with a
+"Sample data" banner. Data requests stay on the phone, so that login never reads or changes real records (its real role stays
+technician). Record the App Review screen recording with it.
+
 ## Every update
 
 1. Raise `version:` in `pubspec.yaml` (e.g. `2.0.2+4` — the number after `+` must always go up).

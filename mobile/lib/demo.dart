@@ -1,12 +1,15 @@
-// Demo mode for store screenshots: `flutter run --dart-define=DEMO=true`.
-// Skips sign-in and answers every Supabase request from the made-up shop
-// below, so no account is needed and no real customer ever appears.
-// Release builds never set DEMO, so none of this runs in the store app.
+// A made-up shop that answers every Supabase request, so no real customer ever
+// appears. Used two ways:
+//  * Store screenshots: `flutter run --dart-define=DEMO=true` skips sign-in.
+//  * App Review: signing in as [reviewEmail] opens the owner screens on this data.
+//    That account's real role stays technician; it never reads or writes live records.
+// Changes made here last until the app is closed.
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
 const demoMode = bool.fromEnvironment('DEMO');
+const reviewEmail = 'appreview@autoprorepairs.com';
 
 String _d(int daysAgo) => DateTime.now().subtract(Duration(days: daysAgo)).toIso8601String().substring(0, 10);
 String _ts(int daysAgo, [int hour = 10]) {
@@ -15,11 +18,11 @@ String _ts(int daysAgo, [int hour = 10]) {
 }
 
 final _customers = [
-  {'id': 'c1', 'first_name': 'Marcus', 'last_name': 'Bell', 'phone': '(352) 555-0142', 'email': 'marcus.bell@example.com', 'company': null, 'address_street': '1180 Lakeshore Dr', 'address_city': 'Leesburg', 'address_state': 'FL', 'address_zip': '34748', 'is_active': true, 'default_terms': 'due_on_receipt', 'tax_exempt': false, 'notes': null, 'created_at': _ts(200)},
-  {'id': 'c2', 'first_name': 'Dana', 'last_name': 'Ortiz', 'phone': '(352) 555-0187', 'email': 'dana.ortiz@example.com', 'company': null, 'address_street': '42 Palm Ct', 'address_city': 'Tavares', 'address_state': 'FL', 'address_zip': '32778', 'is_active': true, 'default_terms': 'due_on_receipt', 'tax_exempt': false, 'created_at': _ts(150)},
-  {'id': 'c3', 'first_name': 'Rick', 'last_name': 'Alvarez', 'phone': '(352) 555-0119', 'email': 'office@lakesidelawn.example', 'company': 'Lakeside Landscaping', 'address_street': '900 Industrial Blvd', 'address_city': 'Leesburg', 'address_state': 'FL', 'address_zip': '34748', 'is_active': true, 'default_terms': 'net_30', 'tax_exempt': false, 'created_at': _ts(400)},
-  {'id': 'c4', 'first_name': 'Priya', 'last_name': 'Shah', 'phone': '(407) 555-0163', 'email': 'priya.shah@example.com', 'company': null, 'address_street': '77 Orange Blossom Ln', 'address_city': 'Eustis', 'address_state': 'FL', 'address_zip': '32726', 'is_active': true, 'default_terms': 'due_on_receipt', 'tax_exempt': false, 'created_at': _ts(60)},
-  {'id': 'c5', 'first_name': 'Tom', 'last_name': 'Reynolds', 'phone': '(352) 555-0108', 'email': 'tomr@example.com', 'company': null, 'address_street': '5 Hilltop Rd', 'address_city': 'Fruitland Park', 'address_state': 'FL', 'address_zip': '34731', 'is_active': true, 'default_terms': 'due_on_receipt', 'tax_exempt': false, 'created_at': _ts(30)},
+  {'id': 'c1', 'first_name': 'Marcus', 'last_name': 'Bell', 'phone': '(352) 555-0142', 'email': 'marcus.bell@example.com', 'company': null, 'address_street': '1180 Lakeshore Dr', 'address_city': 'Leesburg', 'address_state': 'FL', 'address_zip': '34748', 'is_active': true, 'default_terms': 'Due on receipt', 'tax_exempt': false, 'notes': null, 'created_at': _ts(200)},
+  {'id': 'c2', 'first_name': 'Dana', 'last_name': 'Ortiz', 'phone': '(352) 555-0187', 'email': 'dana.ortiz@example.com', 'company': null, 'address_street': '42 Palm Ct', 'address_city': 'Tavares', 'address_state': 'FL', 'address_zip': '32778', 'is_active': true, 'default_terms': 'Due on receipt', 'tax_exempt': false, 'created_at': _ts(150)},
+  {'id': 'c3', 'first_name': 'Rick', 'last_name': 'Alvarez', 'phone': '(352) 555-0119', 'email': 'office@lakesidelawn.example', 'company': 'Lakeside Landscaping', 'address_street': '900 Industrial Blvd', 'address_city': 'Leesburg', 'address_state': 'FL', 'address_zip': '34748', 'is_active': true, 'default_terms': 'Net 30', 'tax_exempt': false, 'created_at': _ts(400)},
+  {'id': 'c4', 'first_name': 'Priya', 'last_name': 'Shah', 'phone': '(407) 555-0163', 'email': 'priya.shah@example.com', 'company': null, 'address_street': '77 Orange Blossom Ln', 'address_city': 'Eustis', 'address_state': 'FL', 'address_zip': '32726', 'is_active': true, 'default_terms': 'Due on receipt', 'tax_exempt': false, 'created_at': _ts(60)},
+  {'id': 'c5', 'first_name': 'Tom', 'last_name': 'Reynolds', 'phone': '(352) 555-0108', 'email': 'tomr@example.com', 'company': null, 'address_street': '5 Hilltop Rd', 'address_city': 'Fruitland Park', 'address_state': 'FL', 'address_zip': '34731', 'is_active': true, 'default_terms': 'Due on receipt', 'tax_exempt': false, 'created_at': _ts(30)},
 ];
 
 final _vehicles = [
@@ -45,7 +48,7 @@ Map<String, dynamic> _ro(String id, int number, String cust, String veh, String 
     'surtax_county': 'Lake', 'total': total, 'amount_paid': paid, 'balance_due': invoiced ? total - paid : 0,
     'payment_status': !invoiced ? 'unpaid' : (paid >= total ? 'paid' : (paid > 0 ? 'partial' : 'unpaid')),
     'due_date': invoiced ? _d(-dueIn) : null, 'invoiced_at': invoiced ? _ts(age) : null, 'voided_at': null, 'created_at': _ts(age + 1, 9), 'promised_at': _ts(-1, 16),
-    'complaint': complaint, 'diagnosis': diagnosis, 'recommendations': null, 'mileage_in': _veh(veh)['mileage'], 'terms': 'due_on_receipt', 'public_token': 'demo$number',
+    'complaint': complaint, 'diagnosis': diagnosis, 'recommendations': null, 'mileage_in': _veh(veh)['mileage'], 'terms': 'Due on receipt', 'public_token': 'demo$number',
     'approved_by_name': approvedBy, 'approved_at': approvedBy != null ? _ts(age) : null, 'customer_notified_at': null, 'stock_vehicle_id': null,
     'customer_id': cust, 'vehicle_id': veh, 'customer': _cust(cust), 'vehicle': _veh(veh), 'notes': null, 'customer_supplied_parts': false,
   };
@@ -90,7 +93,14 @@ final _trips = [
   {'id': 't3', 'trip_date': _d(6), 'from_place': 'Shop — 806 Hood Ave, Leesburg', 'to_place': 'Customer test drive', 'miles': 8, 'round_trip': false, 'purpose': 'test_drive'},
 ];
 
-final _tables = <String, List<Map>>{
+// Rows as plain JSON-style maps, so writes can add any field (including nulls).
+List<Map<String, dynamic>> _rows(List<Map> list) => [for (final r in list) Map<String, dynamic>.from(r)];
+
+final _tables = <String, List<Map<String, dynamic>>>{
+  for (final e in _seed.entries) e.key: _rows(e.value),
+};
+
+final _seed = <String, List<Map>>{
   'customers': _customers, 'customer_vehicles': _vehicles, 'repair_orders': _ros, 'repair_order_items': _items,
   'payments': [{'id': 'p1', 'repair_order_id': 'r7', 'amount': 224.17, 'method': 'card', 'received_at': _ts(19)}],
   'document_signatures': [{'repair_order_id': 'r1', 'kind': 'estimate', 'signer_name': 'Marcus Bell', 'signed_at': _ts(0, 9), 'source': 'in_shop', 'signature': null}],
@@ -163,10 +173,108 @@ bool _match(Map row, String col, String expr) {
 
 const _reserved = {'select', 'order', 'limit', 'offset', 'on_conflict', 'columns'};
 
+var _nextId = 0;
+num _n(Object? v) => v is num ? v : num.tryParse('$v') ?? 0;
+num _cents(num v) => (v * 100).round() / 100;
+
+/// What the database triggers do for real orders: tax, totals and balance.
+void _retotal(Map<String, dynamic> r) {
+  final labor = _n(r['labor_total']), parts = _n(r['parts_total']), other = _n(r['other_total']), paid = _n(r['amount_paid']);
+  final taxable = r['tax_exempt'] == true || parts <= 0 ? 0 : labor + parts + other;
+  final state = _cents(taxable * 0.06), surtax = _cents(taxable * 0.01);
+  final total = _cents(labor + parts + other + state + surtax);
+  final invoiced = r['invoiced_at'] != null;
+  if (invoiced) r['invoice_number'] ??= 1 + _tables['repair_orders']!.map((o) => _n(o['invoice_number'])).reduce((a, b) => a > b ? a : b);
+  r.addAll({
+    'tax_state': state, 'tax_surtax': surtax, 'tax_charged': _cents(state + surtax), 'total': total,
+    'balance_due': invoiced ? _cents(total - paid) : 0,
+    'doc_type': invoiced ? 'invoice' : (r['status'] == 'estimate' ? 'estimate' : 'repair_order'),
+    'payment_status': !invoiced || paid <= 0 ? 'unpaid' : (paid >= total ? 'paid' : 'partial'),
+  });
+}
+
+Map<String, dynamic>? _byId(String table, Object? id) => _tables[table]!.where((r) => r['id'] == id).firstOrNull;
+
+/// Fills in what the database would add to a new row.
+void _onInsert(String table, Map<String, dynamic> row) {
+  row['id'] ??= 'sample-${++_nextId}';
+  row['created_at'] ??= DateTime.now().toUtc().toIso8601String();
+  if (table == 'expenses') row.remove('receipt_path'); // no photo is kept, so nothing to preview later
+  if (table == 'repair_orders') {
+    row['number'] = 1 + _tables['repair_orders']!.map((o) => _n(o['number'])).reduce((a, b) => a > b ? a : b);
+    row['customer'] = _byId('customers', row['customer_id']);
+    row['vehicle'] = _byId('customer_vehicles', row['vehicle_id']);
+    row.addAll({'labor_total': 0, 'parts_total': 0, 'other_total': 0, 'discount_amount': 0, 'amount_paid': 0, 'public_token': 'sample${row['number']}'});
+    _retotal(row);
+  }
+  if (table == 'payments') row['received_at'] ??= row['created_at'];
+}
+
+Map<String, num> _itemSums(Object? roId) {
+  final sums = <String, num>{'labor_total': 0, 'parts_total': 0, 'other_total': 0};
+  for (final i in _tables['repair_order_items']!.where((i) => i['repair_order_id'] == roId)) {
+    final key = switch (i['kind']) { 'labor' => 'labor_total', 'part' => 'parts_total', _ => 'other_total' };
+    sums[key] = sums[key]! + _n(i['quantity']) * _n(i['unit_price']);
+  }
+  return sums;
+}
+
+/// Applies an insert, update or delete, then keeps order totals in step.
+List<Map<String, dynamic>> _write(String table, String method, Map<String, String> query, Object? body) {
+  final rows = _tables.putIfAbsent(table, () => []);
+  bool hit(Map r) => query.entries.every((e) => _reserved.contains(e.key) || _match(r, e.key, e.value));
+  final incoming = [for (final b in body is List ? body : [body]) if (b is Map) Map<String, dynamic>.from(b)];
+  final out = method == 'POST' ? incoming : rows.where(hit).toList();
+
+  final items = table == 'repair_order_items';
+  final affected = items ? out.map((r) => r['repair_order_id']).toSet() : const <Object?>{};
+  final before = {for (final id in affected) id: _itemSums(id)};
+
+  if (method == 'POST') {
+    for (final r in out) {
+      _onInsert(table, r);
+    }
+    rows.addAll(out);
+  } else if (method == 'DELETE') {
+    rows.removeWhere(hit);
+  } else {
+    for (final r in out) {
+      r.addAll(incoming.first);
+      if (table == 'repair_orders') _retotal(r);
+    }
+  }
+
+  for (final id in affected) {
+    final ro = _byId('repair_orders', id);
+    if (ro == null) continue;
+    final after = _itemSums(id);
+    after.forEach((k, v) => ro[k] = _cents(_n(ro[k]) + v - before[id]![k]!));
+    _retotal(ro);
+  }
+  if (table == 'payments' && method == 'POST') {
+    for (final p in out) {
+      final ro = _byId('repair_orders', p['repair_order_id']);
+      if (ro == null) continue;
+      ro['amount_paid'] = _cents(_n(ro['amount_paid']) + _n(p['amount']));
+      _retotal(ro);
+    }
+  }
+  return out;
+}
+
+/// Website calls (email, texts, receipt reading) stay on the phone for sample data.
+Map<String, dynamic> sampleSiteApi(String path) {
+  if (path != '/api/admin/receipt') return {};
+  return {
+    'data': {'is_receipt': true, 'vendor': 'NAPA Auto Parts', 'total': 48.19, 'tax': 3.15, 'date': _d(0), 'category': 'parts', 'notes': 'Sample reading'},
+  };
+}
+
 class DemoClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final path = request.url.path;
+    final query = request.url.queryParameters;
     final bodyText = request is http.Request ? request.body : '';
     Object? out;
     if (path.contains('/rest/v1/rpc/')) {
@@ -175,23 +283,41 @@ class DemoClient extends http.BaseClient {
     } else if (path.contains('/rest/v1/')) {
       final table = path.split('/').last;
       if (request.method != 'GET' && request.method != 'HEAD') {
-        // Writes are accepted and echoed but not kept.
-        final b = bodyText.isEmpty ? {} : jsonDecode(bodyText);
-        out = b is List ? b : [b];
+        out = _write(table, request.method, query, bodyText.isEmpty ? null : jsonDecode(bodyText));
       } else {
         var rows = List<Map>.from(_tables[table] ?? const []);
-        request.url.queryParameters.forEach((k, v) {
+        query.forEach((k, v) {
           if (!_reserved.contains(k)) rows = rows.where((r) => _match(r, k, v)).toList();
         });
+        // Each expense category looks up its ledger account by code.
+        final code = query['code'];
+        if (table == 'accounts' && rows.isEmpty && code != null && code.startsWith('eq.')) {
+          rows = [{'id': 'acct-${code.substring(3)}', 'code': code.substring(3)}];
+        }
         out = rows;
       }
       if ((request.headers['Accept'] ?? '').contains('vnd.pgrst.object')) {
         out = (out as List).isEmpty ? null : out.first;
       }
+    } else if (path.contains('/storage/v1/')) {
+      out = {'Key': 'documents/sample', 'Id': 'sample', 'signedURL': '/object/sign/documents/sample'};
     } else {
       out = {};
     }
     final bytes = utf8.encode(jsonEncode(out));
     return http.StreamedResponse(Stream.value(bytes), 200, headers: {'content-type': 'application/json'}, request: request);
   }
+}
+
+/// Sends a signed-in review account's data requests to [sample]. Sign-in itself
+/// always goes to the real server, and everyone else's requests are untouched.
+class SampleRouter extends http.BaseClient {
+  SampleRouter(this.useSample, {http.Client? real, http.Client? sample}) : _real = real ?? http.Client(), _sample = sample ?? DemoClient();
+
+  final bool Function() useSample;
+  final http.Client _real, _sample;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      !request.url.path.startsWith('/auth/') && useSample() ? _sample.send(request) : _real.send(request);
 }

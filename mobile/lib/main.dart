@@ -95,7 +95,17 @@ class _AdminHomeState extends State<AdminHome> {
           KeyedSubtree(key: ValueKey('$i-${_visits[i]}'), child: page),
       ],
     ),
-    bottomNavigationBar: NavigationBar(
+    bottomNavigationBar: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (sampleData)
+          Container(
+            width: double.infinity,
+            color: const Color(0xFFFFF4D6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: const Text('Sample data: made-up shop, nothing is sent or saved', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.black87)),
+          ),
+        NavigationBar(
       selectedIndex: _tab,
       onDestinationSelected: _select,
       destinations: const [
@@ -120,6 +130,8 @@ class _AdminHomeState extends State<AdminHome> {
           label: 'Money',
         ),
         NavigationDestination(icon: Icon(Icons.more_horiz), label: 'More'),
+      ],
+        ),
       ],
     ),
   );
